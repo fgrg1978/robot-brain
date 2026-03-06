@@ -1,0 +1,18 @@
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+/tmp/
+*.egg-info/
+.env
+.env.*
+
+# Editor
+.DS_Store
+*.swp
+*.swo
+*~
+
+# Claude Code
+.claude/
+CLAUDE.md

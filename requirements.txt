@@ -1,0 +1,4 @@
+openai>=1.0.0
+pyyaml>=6.0
+matplotlib>=3.7.0   # optional — only needed for SITL visualizer (viz.py)
+Pillow>=10.0.0      # optional — SITL camera rendering (first-person raycasting)

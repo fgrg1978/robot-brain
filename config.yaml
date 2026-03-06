@@ -1,0 +1,143 @@
+robot:
+  type: wheeled                # wheeled | drone | humanoid | ackermann
+  listen_port: 9000
+  sensor_rate_hz: 20
+  camera_rate_hz: 2
+  watchdog_timeout_ms: 3000
+
+  wheeled:
+    wheel_base_mm: 142         # Yahboom chassis 310 motors
+    max_speed: 80              # % motor (0-100)
+    encoder_ticks_per_m: 1000
+
+  drone:
+    num_motors: 4
+    motor_layout: x            # x | +
+    hover_throttle: 1450       # PWM for hover
+    max_altitude_m: 50
+    max_tilt_deg: 35
+    pid:
+      roll:  [1.0, 0.01, 0.5]
+      pitch: [1.0, 0.01, 0.5]
+      yaw:   [0.5, 0.01, 0.2]
+      alt:   [2.0, 0.1,  1.0]
+
+  humanoid:
+    num_joints: 12
+    servo_bus: i2c             # i2c | serial | can
+    gait_style: walk
+
+lmstudio:
+  host: "127.0.0.1"
+  port: 1234
+  vlm_model: "smolvlm"
+  llm_model: "llama-3.2-3b"
+  timeout_s: 10
+
+safety:
+  # Per-type safety profiles (Phase AG)
+  wheeled:
+    min_battery_mv: 6500
+    max_tilt_cdeg: 4500          # 45 degrees
+    comms_timeout_s: 5.0
+    obstacle_stop_mm: 200
+    max_speed_pct: 80
+
+  drone:
+    min_battery_mv: 7000         # stricter than wheeled
+    max_tilt_cdeg: 3500          # 35 degrees
+    comms_timeout_s: 3.0         # shorter — drone must react fast
+    max_altitude_m: 50.0
+    min_satellites: 6
+    max_wind_ms: 10.0
+    low_battery_rtl_mv: 7000
+    critical_battery_land_mv: 6500
+
+  humanoid:
+    min_battery_mv: 6500
+    max_tilt_cdeg: 4500
+    comms_timeout_s: 5.0
+    max_joint_torque_pct: 70
+    fall_detect_threshold: 4000  # IMU accel mg
+
+  ackermann:
+    min_battery_mv: 6500
+    max_tilt_cdeg: 4500
+    comms_timeout_s: 5.0
+    obstacle_stop_mm: 200
+    max_speed_pct: 80
+    max_steer_cdeg: 3500         # 35 degrees max steering
+
+modes:
+  seguridad:
+    skills: [SCAN_360, WAIT]
+    loop: true
+    scan_interval_s: 30
+    detect: [person, open_door, fire, movement]
+    on_detect: [notify, alert]
+    schedule: always
+
+  patrulla:
+    skills: [NAVIGATE_TO, SCAN_360]
+    waypoints: [A, B, C]
+    loop: true
+    detect: [person, obstacle]
+    on_detect: [notify]
+
+  explorar:
+    planner: llm
+    loop: false
+
+  volver_base:
+    skills: [NAVIGATE_TO]
+    waypoints: [home]
+    loop: false
+
+tasks:
+  default: "patrulla"
+
+locations:
+  home:
+    x_mm: 0
+    y_mm: 0
+  A:
+    x_mm: 0
+    y_mm: 0
+  B:
+    x_mm: 5000
+    y_mm: 0
+  C:
+    x_mm: 5000
+    y_mm: 3000
+
+notifications:
+  pushover:
+    enabled: false
+    user_key: ""
+    api_token: ""
+    priority: 1
+    sound: siren
+    attach_image: true
+
+  telegram:
+    enabled: false
+    bot_token: ""
+    chat_id: ""
+    commands: true
+
+  email:
+    enabled: false
+    smtp_host: smtp.gmail.com
+    smtp_port: 587
+    username: ""
+    password: ""
+    to: ""
+
+  webhook:
+    enabled: false
+    url: ""
+    headers: {}
+
+api:
+  enabled: true
+  port: 8080

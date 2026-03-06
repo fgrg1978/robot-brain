@@ -1,0 +1,132 @@
+"""Task planner — decomposes a free-text task description into a skill plan.
+
+The LLM receives the skill catalog for the robot type and a task description,
+then returns a JSON array of steps: [{"skill": "FORWARD", "args": {"speed": 60}}, ...]
+
+Usage:
+    planner = TaskPlanner(host, port, model, robot_type="wheeled")
+    plan = planner.plan("patrol the room and report any unusual objects")
+    # -> [{"skill": "SCAN_360"}, {"skill": "FORWARD", "args": {"speed": 50}}, ...]
+"""
+
+import json
+import re
+from typing import Optional
+
+from openai import OpenAI
+from planner.skills import skill_list_prompt, get_skills
+
+
+_SYSTEM_TEMPLATE = """\
+You are the task planner for an autonomous {robot_type} robot.
+Your job: decompose a task description into an ordered list of skills.
+
+Available skills:
+{skill_list}
+
+Respond with a JSON array ONLY — no prose, no markdown:
+[
+  {{"skill": "SKILL_NAME", "args": {{"arg1": value}}}},
+  ...
+]
+
+Rules:
+- Use ONLY the skills listed above. Do not invent new ones.
+- args is optional — omit it for skills with no arguments.
+- Keep the plan short (3-10 steps). Prefer simple, safe steps.
+- If the task involves going somewhere, include NAVIGATE_TO with the location name.
+- If unsure, use STOP as the last step.
+- Return only valid JSON. No explanation.
+"""
+
+
+class TaskPlanner:
+    """Decomposes a free-text task into a typed skill plan via LLM."""
+
+    def __init__(self, host: str, port: int, model: str,
+                 robot_type: str = "wheeled"):
+        self.client = OpenAI(
+            base_url=f"http://{host}:{port}/v1",
+            api_key="not-needed",
+        )
+        self.model = model
+        self.robot_type = robot_type
+        self._skill_list = skill_list_prompt(robot_type)
+        self._known_skills = set(get_skills(robot_type).keys())
+
+    def plan(self, task: str, context: str = "") -> list[dict]:
+        """Decompose a task description into a skill plan.
+
+        Args:
+            task: Natural language task description.
+            context: Optional extra context (current location, state, etc.).
+
+        Returns:
+            List of {"skill": str, "args": dict} dicts.
+            Falls back to [{"skill": "STOP"}] on any error.
+        """
+        system = _SYSTEM_TEMPLATE.format(
+            robot_type=self.robot_type,
+            skill_list=self._skill_list,
+        )
+        user = task
+        if context:
+            user = f"Context: {context}\nTask: {task}"
+
+        try:
+            resp = self.client.chat.completions.create(
+                model=self.model,
+                messages=[
+                    {"role": "system", "content": system},
+                    {"role": "user", "content": user},
+                ],
+                max_tokens=512,
+                temperature=0.1,
+            )
+            raw = resp.choices[0].message.content.strip()
+            return self._parse(raw)
+        except Exception as e:
+            print(f"[TaskPlanner] Error: {e}")
+            return [{"skill": "STOP"}]
+
+    def _parse(self, raw: str) -> list[dict]:
+        """Parse and validate the LLM JSON response."""
+        # Strip markdown fences if present
+        raw = re.sub(r"^```[a-z]*\n?", "", raw.strip())
+        raw = re.sub(r"\n?```$", "", raw.strip())
+
+        try:
+            plan = json.loads(raw)
+        except json.JSONDecodeError:
+            # Try to extract the first JSON array found
+            m = re.search(r"\[.*?\]", raw, re.DOTALL)
+            if not m:
+                return [{"skill": "STOP"}]
+            try:
+                plan = json.loads(m.group())
+            except json.JSONDecodeError:
+                return [{"skill": "STOP"}]
+
+        if not isinstance(plan, list):
+            return [{"skill": "STOP"}]
+
+        validated = []
+        for step in plan:
+            if not isinstance(step, dict):
+                continue
+            skill = step.get("skill", "")
+            if skill not in self._known_skills:
+                print(f"[TaskPlanner] Unknown skill '{skill}' — skipping")
+                continue
+            validated.append({
+                "skill": skill,
+                "args": step.get("args", {}),
+            })
+
+        return validated if validated else [{"skill": "STOP"}]
+
+    def update_robot_type(self, robot_type: str):
+        """Hot-swap robot type (e.g. when STATUS packet changes it)."""
+        self.robot_type = robot_type
+        self._skill_list = skill_list_prompt(robot_type)
+        self._known_skills = set(get_skills(robot_type).keys())
