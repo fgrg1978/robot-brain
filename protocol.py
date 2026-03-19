@@ -57,6 +57,51 @@ ACT_QUAD_ROTOR  = 1
 ACT_HUMANOID    = 2
 ACT_ACKERMANN   = 3
 
+# LED state codes (sent via CONFIG_CMD, config_key=LED_CONFIG_KEY)
+LED_CONFIG_KEY  = 0x10    # config key byte for LED commands
+LED_OFF         = 0x00
+LED_GREEN       = 0x01    # monitoring, all clear
+LED_GREEN_BLINK = 0x02    # mapping perimeter
+LED_YELLOW      = 0x03    # possible detection (VLM analyzing)
+LED_YELLOW_BLINK = 0x04   # investigating (navigating to zone)
+LED_RED         = 0x05    # confirmed detection, recording
+LED_RED_BLINK   = 0x06    # active tracking
+LED_RED_STROBE  = 0x07    # panic / deterrent
+LED_BLUE        = 0x08    # returning to dock
+LED_BLUE_BLINK  = 0x09    # low battery
+LED_WHITE_FLASH = 0x0A    # photo taken (feedback)
+
+# Buzzer config (sent via CONFIG_CMD, config_key=BUZZER_CONFIG_KEY)
+BUZZER_CONFIG_KEY = 0x15
+BUZZER_OFF        = 0x00
+BUZZER_BEEP       = 0x01   # 3 short beeps (alert acknowledgement)
+BUZZER_SIREN      = 0x02   # continuous siren (deterrent)
+BUZZER_CHIRP      = 0x03   # single chirp (confirmation feedback)
+
+# Deterrent hardware config keys (sent via CONFIG_CMD)
+SIREN_CONFIG_KEY     = 0x16   # siren module (12V via MOSFET)
+SPOTLIGHT_CONFIG_KEY = 0x17   # LED 10W COB spotlight (via MOSFET)
+LASER_CONFIG_KEY     = 0x18   # green laser 532nm (via MOSFET)
+SERVO_PAN_KEY        = 0x19   # pan servo angle (0-180 degrees)
+SERVO_TILT_KEY       = 0x1A   # tilt servo angle (0-180 degrees)
+SPEAKER_CONFIG_KEY   = 0x1B   # PAM8403 amplifier + speaker
+
+# Device on/off values (siren, spotlight, laser)
+DEVICE_OFF       = 0x00
+DEVICE_ON        = 0x01
+SPOTLIGHT_STROBE = 0x02       # strobing mode for spotlight
+
+# Speaker audio file IDs
+SPEAKER_STOP     = 0x00
+SPEAKER_WARNING  = 0x01       # "ATENCIÓN. ZONA VIGILADA."
+SPEAKER_DOG_BARK = 0x02       # dog bark loop
+SPEAKER_SIREN_FX = 0x03       # siren sound effect (software, not hardware siren)
+
+# Digital sensor flags (bit flags in sensor_flags u16 field)
+SENSOR_FLAG_PIR   = 0x0001  # PIR motion detected
+SENSOR_FLAG_SOUND = 0x0002  # Sound sensor triggered (glass break, impact)
+SENSOR_FLAG_IR    = 0x0004  # IR proximity triggered
+
 
 def crc8(data: bytes) -> int:
     """CRC-8/MAXIM (polynomial 0x31)."""
@@ -121,8 +166,11 @@ _HDR_SIZE = struct.calcsize(_HDR_FMT)  # 34
 
 # Wheeled extra: odom_dist(4) + odom_hdg(4) + enc_l(8) + enc_r(8)
 #                + range_front(2) + range_right(2) = 28 bytes
+# Extended: + sensor_flags(2) = 30 bytes
 _WHL_FMT  = "<2i2q2H"
 _WHL_SIZE = struct.calcsize(_WHL_FMT)  # 28
+_WHL_FLAGS_FMT = "<H"
+_WHL_FLAGS_SIZE = struct.calcsize(_WHL_FLAGS_FMT)  # 2
 
 # Drone extra: baro(4) + mag(6) + gps_lat(4) + gps_lon(4) + gps_alt(4) + sonar(2) = 24 bytes
 _DRN_FMT  = "<i3h3iH"
@@ -131,7 +179,11 @@ _DRN_SIZE = struct.calcsize(_DRN_FMT)  # 24 — but header already has battery
 
 @dataclass
 class SensorPacket:
-    """Wheeled robot sensor packet (common header + wheeled payload)."""
+    """Wheeled robot sensor packet (common header + wheeled payload).
+
+    Extended format includes sensor_flags (u16 bit flags for PIR/sound/IR).
+    Parser auto-detects legacy (62B) vs extended (64B) payloads.
+    """
     # Common header
     timestamp_ms:   int
     battery_mv:     int
@@ -144,6 +196,8 @@ class SensorPacket:
     encoder_r:      int
     range_front_mm: int
     range_right_mm: int
+    # Extended: digital sensor flags (PIR, sound, IR)
+    sensor_flags:   int = 0
 
     ROBOT_TYPE = ROBOT_WHEELED
 
@@ -151,12 +205,17 @@ class SensorPacket:
     def from_bytes(cls, data: bytes) -> "SensorPacket":
         ts, ax, ay, az, gx, gy, gz, batt = struct.unpack_from(_HDR_FMT, data)
         od, oh, el, er, rf, rr = struct.unpack_from(_WHL_FMT, data, _HDR_SIZE)
+        # Auto-detect extended format with sensor_flags
+        flags = 0
+        if len(data) >= _HDR_SIZE + _WHL_SIZE + _WHL_FLAGS_SIZE:
+            (flags,) = struct.unpack_from(_WHL_FLAGS_FMT, data, _HDR_SIZE + _WHL_SIZE)
         return cls(
             timestamp_ms=ts, battery_mv=batt,
             accel_mg=(ax, ay, az), gyro_mdps=(gx, gy, gz),
             odom_dist_mm=od, odom_hdg_cdeg=oh,
             encoder_l=el, encoder_r=er,
             range_front_mm=rf, range_right_mm=rr,
+            sensor_flags=flags,
         )
 
     def to_bytes(self) -> bytes:
@@ -166,7 +225,8 @@ class SensorPacket:
             self.odom_dist_mm, self.odom_hdg_cdeg,
             self.encoder_l, self.encoder_r,
             self.range_front_mm, self.range_right_mm)
-        return hdr + whl
+        flags = struct.pack(_WHL_FLAGS_FMT, self.sensor_flags)
+        return hdr + whl + flags
 
 
 @dataclass
@@ -263,7 +323,13 @@ def sensor_packet_from_bytes(robot_type: int, data: bytes):
 
 @dataclass
 class SensorCompact:
-    """Compact sensor packet for low-bandwidth links (20 bytes)."""
+    """Compact sensor packet for low-bandwidth links (20 bytes).
+
+    NOTE: Digital sensor flags (PIR motion, IR proximity, sound detection)
+    could be carried as bit flags in the 'mode' byte's upper bits or in a
+    dedicated flags field if the format is extended. Currently unused bits
+    in 'mode' (bits 3-7) are available for this purpose.
+    """
     lat_deg7:   int   # latitude × 1e7
     lon_deg7:   int   # longitude × 1e7
     alt_cm:     int   # altitude cm
@@ -383,3 +449,36 @@ class StatusPacket:
             return cls(mode=m, tasks_ok=t, canary_ok=c, uptime_s=u)
         m, t, c, u, rt = struct.unpack(cls.FORMAT_V2, data)
         return cls(mode=m, tasks_ok=t, canary_ok=c, uptime_s=u, robot_type=rt)
+
+
+# ── ConfigCmd (LED + generic config) ─────────────────────────────────────────
+
+@dataclass
+class ConfigCmd:
+    """Config command to robot. Key-value: config_key(1B) + value(1B) + reserved(2B).
+
+    Used for LED state, power mode, and other runtime configuration.
+    """
+    config_key: int
+    value: int
+    reserved: int = 0
+
+    FORMAT = "<BBH"   # 4 bytes: key, value, reserved_u16
+
+    def to_bytes(self) -> bytes:
+        return struct.pack(self.FORMAT, self.config_key, self.value, self.reserved)
+
+    @classmethod
+    def from_bytes(cls, data: bytes) -> "ConfigCmd":
+        k, v, r = struct.unpack(cls.FORMAT, data[:4])
+        return cls(config_key=k, value=v, reserved=r)
+
+    @classmethod
+    def led(cls, state: int) -> "ConfigCmd":
+        """Create a LED state command."""
+        return cls(config_key=LED_CONFIG_KEY, value=state)
+
+    @classmethod
+    def buzzer(cls, pattern: int) -> "ConfigCmd":
+        """Create a buzzer command."""
+        return cls(config_key=BUZZER_CONFIG_KEY, value=pattern)

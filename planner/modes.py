@@ -21,6 +21,14 @@ class ModeConfig:
     scan_interval_s: Optional[float] = None
     planner:        str = "scripted"   # scripted | llm
     schedule:       str = "always"     # always | <cron expression>
+    # Guard-specific settings
+    sensors:         list[str] = field(default_factory=list)   # [pir, sound, ir]
+    perimeter_only:  bool = False     # ignore interior detections
+    patrol_speed_pct: int = 0         # override patrol speed (0 = use default)
+    continuous_buzzer: bool = False    # non-stop buzzer in this mode
+    continuous_led:    bool = False    # non-stop LED in this mode
+    led_on_detect:     bool = False   # turn on LED on detection (night mode)
+    track_intruder:    bool = False   # auto-track detected persons
 
 
 # ── Factory ───────────────────────────────────────────────────────────────────
@@ -39,6 +47,13 @@ def load_modes(config: dict) -> dict[str, ModeConfig]:
             scan_interval_s=raw.get("scan_interval_s"),
             planner=raw.get("planner", "scripted"),
             schedule=raw.get("schedule", "always"),
+            sensors=raw.get("sensors", []),
+            perimeter_only=raw.get("perimeter_only", False),
+            patrol_speed_pct=raw.get("patrol_speed_pct", 0),
+            continuous_buzzer=raw.get("continuous_buzzer", False),
+            continuous_led=raw.get("continuous_led", False),
+            led_on_detect=raw.get("led_on_detect", False),
+            track_intruder=raw.get("track_intruder", False),
         )
     return modes
 

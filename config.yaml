@@ -9,6 +9,10 @@ robot:
     wheel_base_mm: 142         # Yahboom chassis 310 motors
     max_speed: 80              # % motor (0-100)
     encoder_ticks_per_m: 1000
+    pid_enabled: true
+    pid_kp: 1.0
+    pid_ki: 0.1
+    pid_kd: 0.05
 
   drone:
     num_motors: 4
@@ -93,6 +97,56 @@ modes:
     waypoints: [home]
     loop: false
 
+  guardia:
+    skills: [PATROL_PERIMETER]
+    loop: true
+    detect: [person, open_door, fire, movement, vehicle]
+    on_detect: [notify, alert, buzzer_alert]
+    sensors: [pir, sound, ir]
+    schedule: always
+    scan_interval_s: 30
+
+  guardia_ausencia:
+    skills: [PATROL_PERIMETER]
+    loop: true
+    detect: [person, animal, vehicle, fire, smoke, open_door]
+    on_detect: [buzzer_alert, notify_telegram_photo, record_evidence, deterrent]
+    sensors: [pir, sound, ir]
+    schedule: always
+    track_intruder: true
+
+  guardia_presencia:
+    skills: [PATROL_PERIMETER]
+    loop: true
+    perimeter_only: true
+    detect: [person, vehicle]
+    on_detect: [notify_telegram_photo, record_evidence]
+    sensors: [pir]
+    schedule: always
+
+  guardia_nocturno:
+    skills: [PATROL_PERIMETER]
+    loop: true
+    detect: [person, animal, vehicle, fire]
+    on_detect: [buzzer_alert, notify_telegram_photo, record_evidence, deterrent]
+    sensors: [pir, sound, ir]
+    led_on_detect: true
+    patrol_speed_pct: 50
+    track_intruder: true
+
+  panico:
+    skills: [SCAN_360]
+    loop: true
+    detect: [person, animal, vehicle, fire, smoke, open_door]
+    on_detect: [buzzer_siren, notify_telegram_photo, record_evidence]
+    sensors: [pir, sound, ir]
+    continuous_buzzer: true
+    continuous_led: true
+
+  mapeo:
+    skills: [MAP_PERIMETER]
+    loop: false
+
 tasks:
   default: "patrulla"
 
@@ -137,6 +191,72 @@ notifications:
     enabled: false
     url: ""
     headers: {}
+
+power:
+  patrol_speed_eco_pct: 25         # slower = less motor current
+  patrol_speed_alert_pct: 50       # normal speed in alert
+  lidar_hz_eco: 5                  # reduced scan rate
+  lidar_hz_alert: 10               # full scan rate
+  camera_warmup_ms: 200            # CSI re-init time
+  wifi_batch_interval_s: 2         # ESP32 batch send in ECO
+  alert_timeout_s: 120             # auto-return to ECO
+  alert_clear_count: 3             # VLM CLEAR count to de-escalate
+  led_eco_duty_pct: 10             # dim green in ECO
+  led_alert_duty_pct: 100          # full brightness in ALERT
+
+alert:
+  cooldown_s: 30                   # don't re-alert same sensor+label within this window
+  evidence_frames: 10              # frames to save per detection event
+  evidence_dir: "data/evidence"    # base directory for evidence storage
+  evidence_retention_days: 30      # cleanup old evidence after this many days
+  sensor_debounce_s: 1.0           # ignore repeat sensor triggers within this window
+  sensor_cooldown_s: 30.0          # per-sensor cooldown after alert
+
+slam:
+  map_resolution_mm: 50          # 5 cm per cell
+  map_size_cells: 1000           # 50 m × 50 m
+  lidar_scan_hz: 10
+  waypoint_interval_mm: 1000     # record waypoint every 1 m
+  loop_closure_threshold_mm: 500
+  path_plan_margin_cells: 2      # inflate obstacles for path planning
+  map_save_dir: "data"
+
+docks:
+  # Charging dock configuration
+  #- id: dock_main
+  #  waypoint: {x_mm: 0, y_mm: 0}
+  #  approach_heading_cdeg: 18000   # approach from behind (180°)
+
+battery:
+  low_mv: 6800                     # trigger return to dock
+  critical_mv: 6400                # emergency dock
+  full_mv: 8200                    # fully charged, resume patrol
+  check_interval_s: 10.0
+  samples_for_decision: 3          # consecutive low readings before action
+
+rtsp_cameras:
+  # Fixed surveillance cameras — brain monitors these 24/7
+  # Robot dispatched to investigate on confirmed detection
+  #- name: jardin
+  #  url: "rtsp://192.168.1.100:554/stream1"
+  #  zone_waypoint: jardin_centro
+  #  scan_interval_s: 10
+  #  motion_threshold_pct: 15
+  #- name: entrada
+  #  url: "rtsp://192.168.1.101:554/stream1"
+  #  zone_waypoint: puerta_principal
+  #  scan_interval_s: 5
+  #  motion_threshold_pct: 10
+  #- name: garaje
+  #  url: "rtsp://192.168.1.102:554/stream1"
+  #  zone_waypoint: zona_garaje
+  #  scan_interval_s: 10
+  #  motion_threshold_pct: 15
+  #- name: lateral
+  #  url: "rtsp://192.168.1.103:554/stream1"
+  #  zone_waypoint: lateral_oeste
+  #  scan_interval_s: 10
+  #  motion_threshold_pct: 15
 
 api:
   enabled: true

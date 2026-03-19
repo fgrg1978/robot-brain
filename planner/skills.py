@@ -86,6 +86,63 @@ WHEELED_SKILLS: dict[str, dict] = {
         "args": {"target": ("str", "person | object description")},
         "example": "TRACK person",
     },
+    "MAP_PERIMETER": {
+        "description": "Explore and map the environment using LiDAR SLAM.",
+        "args": {},
+        "example": "MAP_PERIMETER",
+    },
+    "PATROL_PERIMETER": {
+        "description": "Patrol recorded perimeter waypoints with LiDAR scanning.",
+        "args": {"exclude_rtsp": ("bool", "skip RTSP-covered zones (default true)")},
+        "example": "PATROL_PERIMETER",
+    },
+    "EXPLORE_FRONTIER": {
+        "description": "Navigate to nearest unmapped frontier for exploration.",
+        "args": {},
+        "example": "EXPLORE_FRONTIER",
+    },
+    "DETERRENT": {
+        "description": "Activate escalating deterrent sequence (LED, siren, spotlight, speaker).",
+        "args": {},
+        "example": "DETERRENT",
+    },
+    "AIM_AT": {
+        "description": "Point turret (spotlight + laser) at pixel position in frame.",
+        "args": {
+            "px_x": ("int", "target pixel X coordinate"),
+            "px_y": ("int", "target pixel Y coordinate"),
+        },
+        "example": "AIM_AT 320 240",
+    },
+    "STAND_DOWN": {
+        "description": "De-escalate all deterrent systems, turret to neutral.",
+        "args": {},
+        "example": "STAND_DOWN",
+    },
+    "INVESTIGATE_ZONE": {
+        "description": "Navigate to a zone flagged by RTSP camera, scan, and report.",
+        "args": {
+            "zone": ("str", "zone waypoint name from RTSP camera config"),
+        },
+        "example": "INVESTIGATE_ZONE jardin_centro",
+    },
+    "RETURN_TO_DOCK": {
+        "description": "Navigate to charging dock, IR homing for final approach, back in.",
+        "args": {},
+        "example": "RETURN_TO_DOCK",
+    },
+    "UNDOCK": {
+        "description": "Drive forward off charging dock, confirm undocked.",
+        "args": {},
+        "example": "UNDOCK",
+    },
+    "TRACK_INTRUDER": {
+        "description": "Follow a detected person, keeping at safe distance.",
+        "args": {
+            "target": ("str", "target label (default: person)"),
+        },
+        "example": "TRACK_INTRUDER person",
+    },
 }
 
 # ── Drone-specific skills ─────────────────────────────────────────────────────

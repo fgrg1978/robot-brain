@@ -78,6 +78,44 @@ class WheeledPolicy:
             speed = int(args.get("speed", 30))
             return ActuatorCmd.wheeled(speed, speed)
 
+        if s in ("MAP_PERIMETER", "PATROL_PERIMETER", "EXPLORE_FRONTIER"):
+            # Navigation skills — default slow forward, actual steering
+            # is handled by the mapper/path planner sending TURN/FORWARD
+            speed = int(args.get("speed", 30))
+            return ActuatorCmd.wheeled(speed, speed)
+
+        if s == "NAVIGATE_PATH":
+            # Follow planned path — steering based on heading error
+            speed = int(args.get("speed", 40))
+            steer = int(args.get("steer", 0))  # -100..+100
+            left = min(speed + steer, self.max_speed)
+            right = min(speed - steer, self.max_speed)
+            return ActuatorCmd.wheeled(left, right)
+
+        if s == "DETERRENT":
+            # Slow advance toward intruder during deterrent
+            speed = int(args.get("speed", 15))
+            return ActuatorCmd.wheeled(speed, speed)
+
+        if s in ("AIM_AT", "STAND_DOWN"):
+            # No motor movement — turret/deterrent handled by DeterrentManager
+            return ActuatorCmd.wheeled(0, 0)
+
+        if s == "INVESTIGATE_ZONE":
+            # Navigate toward zone — default moderate speed
+            speed = int(args.get("speed", 40))
+            return ActuatorCmd.wheeled(speed, speed)
+
+        if s == "RETURN_TO_DOCK":
+            # Slow approach toward dock
+            speed = int(args.get("speed", 20))
+            return ActuatorCmd.wheeled(speed, speed)
+
+        if s == "UNDOCK":
+            # Drive forward off dock
+            speed = int(args.get("speed", 30))
+            return ActuatorCmd.wheeled(speed, speed)
+
         # Unknown skill — safe default
         return ActuatorCmd.wheeled(0, 0)
 

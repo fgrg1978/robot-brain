@@ -46,10 +46,16 @@ from camera import render_camera_payload
 
 WHEEL_BASE_MM   = 142       # Yahboom chassis 310
 TICKS_PER_M     = 1000      # encoder resolution
+MM_PER_M        = 1000      # millimeters per meter (for unit conversion)
 MAX_SPEED_MM_S  = 500       # 100% = 500 mm/s
 BATTERY_START   = 7400      # mV
 BATTERY_DRAIN   = 0.5       # mV per second (idle) — real drain would be higher under load
 SENSOR_NOISE    = 2         # ± ticks noise on encoders
+
+# LiDAR simulation
+LIDAR_NUM_RAYS  = 360       # one ray per degree
+LIDAR_MAX_MM    = 12000     # LD19 max range
+LIDAR_NOISE_MM  = 10        # ± mm noise per ray
 
 
 # ── World / obstacle model ────────────────────────────────────────────────────
@@ -184,8 +190,8 @@ class RobotSim:
             self.speed_r = 0
 
         # Encoders
-        ticks_l = int(vl * dt / 1000 * TICKS_PER_M)
-        ticks_r = int(vr * dt / 1000 * TICKS_PER_M)
+        ticks_l = int(vl * dt / MM_PER_M * TICKS_PER_M)
+        ticks_r = int(vr * dt / MM_PER_M * TICKS_PER_M)
         self.enc_l += ticks_l
         self.enc_r += ticks_r
 
@@ -210,6 +216,22 @@ class RobotSim:
     def range_right_mm(self) -> int:
         d = self.world.raycast(self.x, self.y, (self.hdg_deg - 90) % 360)
         return int(min(d, 65535))
+
+    def lidar_scan(self) -> list[tuple[int, int]]:
+        """Simulate 360° LiDAR scan. Returns [(angle_cdeg, distance_mm), ...]."""
+        import random
+        scan = []
+        for deg in range(LIDAR_NUM_RAYS):
+            abs_angle = self.hdg_deg + deg
+            dist = self.world.raycast(self.x, self.y, abs_angle)
+            dist = min(dist, LIDAR_MAX_MM)
+            if dist < LIDAR_MAX_MM:
+                dist += random.randint(-LIDAR_NOISE_MM, LIDAR_NOISE_MM)
+                dist = max(0, dist)
+            # angle relative to robot heading, in centidegrees
+            angle_cdeg = deg * 100
+            scan.append((angle_cdeg, int(dist)))
+        return scan
 
     def sensor_packet(self) -> SensorPacket:
         import random
@@ -316,6 +338,7 @@ class SITLClient:
             "enc_r":          self.robot.enc_r,
             "odom_dist_mm":   self.robot.odom_dist_mm,
             "timestamp_ms":   self.robot.timestamp_ms,
+            "lidar_rays":     self.robot.lidar_scan(),
         }
         try:
             with open(self.state_file, "w") as f:

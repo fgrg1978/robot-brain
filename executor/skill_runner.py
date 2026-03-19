@@ -59,6 +59,17 @@ _DEFAULT_STEP_S: dict[str, float] = {
     "TURN_RIGHT":  1.5,
     "FOLLOW_WALL": 5.0,
     "TRACK":       5.0,
+    "MAP_PERIMETER":    60.0,   # mapping runs long, but patrol controller manages timing
+    "PATROL_PERIMETER": 60.0,
+    "EXPLORE_FRONTIER": 30.0,
+    "NAVIGATE_PATH":    2.0,
+    "DETERRENT":        60.0,   # deterrent manager handles timing
+    "AIM_AT":           _INSTANT,
+    "STAND_DOWN":       _INSTANT,
+    "INVESTIGATE_ZONE": 15.0,   # navigate + scan at zone
+    "RETURN_TO_DOCK":   30.0,   # navigate + IR homing
+    "UNDOCK":           3.0,    # drive off dock
+    "TRACK_INTRUDER":  60.0,   # tracker manages timing
     # Drone
     "HOVER":       5.0,
     "TAKEOFF":     4.0,
