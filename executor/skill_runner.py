@@ -102,22 +102,27 @@ class SkillRunner:
     def __init__(self,
                  policy,
                  send_cmd: Callable[[ActuatorCmd], Awaitable[None]],
-                 on_step_done: Optional[Callable[[str, dict, ActuatorCmd], None]] = None):
+                 on_step_done: Optional[Callable[[str, dict, ActuatorCmd], None]] = None,
+                 on_plan_done: Optional[Callable[[list, str, int, str, str, float], None]] = None):
         """
         Args:
             policy:       WheeledPolicy | DronePolicy | HumanoidPolicy
             send_cmd:     async callable that sends an ActuatorCmd to the robot
             on_step_done: optional callback(skill, args, cmd) after each step
+            on_plan_done: optional callback(plan, outcome, steps_executed,
+                          error, interrupt_reason, duration_s) after plan ends
         """
         self.policy      = policy
         self.send_cmd    = send_cmd
         self.on_step_done = on_step_done
+        self.on_plan_done = on_plan_done
 
         self.state       = RunnerState.IDLE
         self.current_plan: list[dict] = []
         self.current_step = 0
         self._stop_event: asyncio.Event | None = None   # created lazily per run
         self._interrupt_reason = ""
+        self._start_time: float = 0.0
 
         # Metrics
         self.steps_executed = 0
@@ -151,6 +156,7 @@ class SkillRunner:
         self.clear()
         self.current_plan = plan
         self.state = RunnerState.RUNNING
+        self._start_time = time.monotonic()
         print(f"[Runner] Starting plan: {len(plan)} steps")
 
         for i, step in enumerate(plan):
@@ -177,6 +183,9 @@ class SkillRunner:
         if self.state == RunnerState.RUNNING:
             self.state = RunnerState.DONE
             print(f"[Runner] Plan complete ({self.steps_executed} steps)")
+
+        # Report outcome to experience store
+        self._report_outcome()
 
         return self.state
 
@@ -243,6 +252,31 @@ class SkillRunner:
             n = 2
         cmd = ActuatorCmd.stop(n_channels=n)
         await self.send_cmd(cmd)
+
+    # ── Experience reporting ─────────────────────────────────────────────
+
+    def _report_outcome(self):
+        """Notify on_plan_done callback with execution results."""
+        if not self.on_plan_done:
+            return
+        outcome_map = {
+            RunnerState.DONE: "done",
+            RunnerState.INTERRUPTED: "interrupted",
+            RunnerState.ERROR: "error",
+        }
+        outcome = outcome_map.get(self.state, "error")
+        duration = time.monotonic() - self._start_time if self._start_time else 0.0
+        try:
+            self.on_plan_done(
+                self.current_plan,
+                outcome,
+                self.steps_executed,
+                self.last_error,
+                self._interrupt_reason,
+                duration,
+            )
+        except Exception as e:
+            print(f"[Runner] on_plan_done error: {e}")
 
     # ── Repr ───────────────────────────────────────────────────────────────────
 

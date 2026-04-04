@@ -45,6 +45,8 @@ from perception.rtsp_monitor import RtspMonitor, RtspEvent, cameras_from_config
 from planner.docking import DockManager, DockState, DockInfo, dock_from_config
 from planner.zones import ZoneManager
 from planner.tracker import IntrusionTracker
+from planner.experience import ExperienceStore
+from planner.meta import MetaReviewer
 from notifications import Notifier
 from telegram_bot import TelegramBot
 from api import APIServer
@@ -108,9 +110,22 @@ class BrainServer:
         self.vision  = VisionPerception(lm["host"], lm["port"], lm["vlm_model"])
         self.planner = Planner(lm["host"], lm["port"], lm["llm_model"])
 
-        # Task planner (LLM → skill plan)
+        # Experience store (persistent plan outcome memory)
+        exp_dir = self.config.get("experience", {}).get("dir", "data/experience")
+        self.experience = ExperienceStore(exp_dir, robot_type=robot_type_str)
+
+        # Meta-reviewer (LLM heuristic extraction)
+        self.meta_reviewer = MetaReviewer(
+            lm["host"], lm["port"], lm["llm_model"],
+            experience=self.experience,
+            robot_type=robot_type_str,
+        )
+
+        # Task planner (LLM → skill plan) — with experience + meta hooks
         self.task_planner = TaskPlanner(lm["host"], lm["port"], lm["llm_model"],
-                                        robot_type=robot_type_str)
+                                        robot_type=robot_type_str,
+                                        experience=self.experience,
+                                        meta=self.meta_reviewer)
 
         # Policy translator
         self.robot_type = ROBOT_WHEELED
@@ -190,6 +205,9 @@ class BrainServer:
         self._writer: asyncio.StreamWriter | None = None
         self._prev_odom: dict = {"dist_mm": 0, "heading_cdeg": 0}
 
+        # Current task description (for experience recording)
+        self._current_task_desc: str = ""
+
         # Task queue (for /task API and Telegram /task command)
         self.task_queue: asyncio.Queue = asyncio.Queue()
 
@@ -220,8 +238,9 @@ class BrainServer:
         # Set LED to monitoring (green) on connect
         await self.led.set_state("monitoring", writer)
 
-        # Create SkillRunner bound to this connection
-        self.runner = SkillRunner(self.policy, self._send_actuator_cmd)
+        # Create SkillRunner bound to this connection (with experience callback)
+        self.runner = SkillRunner(self.policy, self._send_actuator_cmd,
+                                  on_plan_done=self._on_plan_done)
 
         # Create PatrolController bound to this connection
         self.patrol = PatrolController(
@@ -746,11 +765,57 @@ class BrainServer:
             )
             self.policy = get_translator(pkt.robot_type, self.config)
             self.safety_profile = SafetyProfile.for_robot_type(pkt.robot_type, self.config)
+            self.experience.update_robot_type(robot_type_str)
+            self.meta_reviewer.update_robot_type(robot_type_str)
             self.task_planner.update_robot_type(robot_type_str)
             if self.runner:
                 self.runner.policy = self.policy
             print(f"[BRAIN] Robot type changed to {robot_type_str}")
             print(f"[BRAIN] Safety profile: {robot_type_str}")
+
+    # ── Experience loop (Hyperagent) ────────────────────────────────────────
+
+    def _on_plan_done(self, plan: list, outcome: str, steps_executed: int,
+                      error: str, interrupt_reason: str, duration_s: float):
+        """Called by SkillRunner when a plan finishes — records to experience."""
+        task_desc = self._current_task_desc or "unknown"
+        context = self._build_experience_context()
+        self.experience.record(
+            task=task_desc,
+            plan=plan,
+            outcome=outcome,
+            context=context,
+            steps_executed=steps_executed,
+            error=error,
+            interrupt_reason=interrupt_reason,
+            duration_s=duration_s,
+        )
+        # Trigger meta-review if due (runs in background)
+        if self.meta_reviewer.should_review():
+            asyncio.get_event_loop().call_soon(
+                lambda: asyncio.ensure_future(self._run_meta_review())
+            )
+
+    def _build_experience_context(self) -> str:
+        """Build a context string from current robot state for experience."""
+        parts = []
+        if self.state.sensors.get("battery_mv"):
+            parts.append(f"battery={self.state.sensors['battery_mv']}mV")
+        if self.mode_manager.current_name:
+            parts.append(f"mode={self.mode_manager.current_name}")
+        if self.state.sensors.get("range_front_mm"):
+            parts.append(f"range_front={self.state.sensors['range_front_mm']}mm")
+        return ", ".join(parts) if parts else ""
+
+    async def _run_meta_review(self):
+        """Run meta-review in background (LLM call)."""
+        try:
+            loop = asyncio.get_event_loop()
+            rules = await loop.run_in_executor(None, self.meta_reviewer.review)
+            if rules:
+                logger.info("[Meta] Updated %d heuristic rules", len(rules))
+        except Exception as e:
+            logger.error("[Meta] Review failed: %s", e)
 
     # ── Task queue worker ─────────────────────────────────────────────────────
 
@@ -850,7 +915,9 @@ class BrainServer:
                             )
                         await self.led.set_state("monitoring", self._writer)
                 else:
-                    plan = self.task_planner.plan(task_desc)
+                    self._current_task_desc = task_desc
+                    context = self._build_experience_context()
+                    plan = self.task_planner.plan(task_desc, context=context)
                     print(f"[BRAIN] Plan: {plan}")
                     if self.runner:
                         await self.runner.execute_plan(plan)

@@ -1,143 +1,128 @@
-# Lista de Compra — Robot Terrestre v1
+# Hardware BOM
 
-Robot autónomo con VisionFive 2 (RISC-V). Objetivo: plataforma mínima funcional
-para desarrollar y probar el sistema (movimiento, odometría, visión, brain link).
+## Stock (already owned)
 
----
+### Core
+- VisionFive 2 (JH7110, RISC-V SBC) — main computer
+- Raspberry Pi Camera (CSI MIPI) — vision
+- ESP32 (WiFi bridge UART↔TCP) — wireless link
+- macOS with LM Studio — brain server (VLM + LLM)
+- 4× RTSP IP cameras — fixed perimeter surveillance
 
-## Chassis + Motores
+### Motor Control
+- TB6612FNG motor driver — dual H-bridge, 2 channels
 
-| # | Componente | Especificaciones | Precio aprox | Link |
-|---|---|---|---|---|
-| 1 | Yahboom Mini Smart Car Chassis 4WD | Aluminio, 14.2cm ancho, muchos agujeros montaje | ~$35 | [Yahboom](https://category.yahboom.net/products/yahboom-mini-car-chassis) |
+### Sensors
+- HC-SR04 ultrasonic rangefinder ×1 — low obstacle detection (complements LiDAR)
+- ADS1115 16-bit ADC 4-channel — battery voltage, analog sensors
+- PIR sensor — passive infrared motion detection
+- IR sensor — infrared proximity / line following / dock homing
+- Laser rangefinder — precise distance measurement
+- Sound sensor / microphone — audio event detection (glass break, impact)
+- Various Arduino sensor kits
+- Colored LEDs (red, green, yellow/blue) — status indicators
 
-**Incluye:**
-- 4× Motor 310 DC con encoder Hall cuadratura (señal A/B), reducción 1:20
-- 4× Ruedas goma
-- Chassis aluminio + tornillería completa
+### Power
+- 18650 cells 1200mAh × 30 units — robot packs + dock spares
+- 18650 holders (2S series = 7.4V)
+- TP4056 charger modules — Li-ion charging (robot + dock)
+- DD05CVSA — 5V boost/buck converter for VF2
+- Recommended pack: 2S3P (6 cells, 7.4V 3.6Ah, ~2.5h autonomy per charge)
 
-**Por qué este:** encoders Hall reales (no ópticos) → odometría precisa. Aluminio aguanta peso VF2 + batería. Agujeros estándar para montar todo.
+### Misc
+- Resistors, capacitors, diodes — all values
+- Dupont cables, breadboards, protoboards
+- M3 nylon standoffs
+- ESP8266 modules (spare WiFi options)
+- Stepper motors ×2 (not used for wheeled robot, future projects)
 
----
+## Need to buy
 
-## Electrónica
+| # | Component | Search on AliExpress | ~EUR |
+|---|---|---|---|
+| 1 | 4WD chassis with encoders | "2-layer 4WD smart robot car chassis with speed encoder" | 13 |
+| 2 | IMU (accelerometer + gyro) | "GY-521 MPU6050 module" | 1-2 |
+| 3 | Piezo buzzer (3.3V passive) | "passive buzzer module 3.3V" (or use from Arduino kit) | 1 |
+| 4 | LiDAR 2D 360° | "LD19 LD-06 LiDAR" or "YDLIDAR X4" | 15-25 |
+| 5 | 18650 holder 2S3P | "18650 holder 2S3P" (or wire 3× 2S holders in parallel) | 2-3 |
 
-| # | Componente | Especificaciones | Precio aprox | Link |
-|---|---|---|---|---|
-| 2 | L298N Dual H-Bridge | 2 canales, hasta 2A/canal, 5-35V | ~$3 | Amazon/AliExpress "L298N motor driver" |
-| 3 | Step-down DC-DC 5V/3A | LM2596 o MP1584, input 7-28V → 5V fijo | ~$3 | Amazon/AliExpress "LM2596 5V step down" |
-| 4 | Cables dupont M-F y F-F | Pack 40 cables 20cm, ambos tipos | ~$3 | Amazon/AliExpress "dupont cable kit" |
-| 5 | Conector XT60 macho + cable | Para conectar LiPo al sistema | ~$2 | Amazon/AliExpress "XT60 pigtail" |
+**Total: ~32-44 EUR**
 
-**Nota sobre L298N:** Controla los 4 motores en pares (2 izquierda, 2 derecha) — configuración diferencial. Cada canal controla un lado. Si necesitas control individual de 4 motores, usa 2× L298N o 1× L298N + 1× TB6612FNG.
+## Future purchases (deterrent + docking, not needed for v1)
 
----
+| # | Component | Search on AliExpress | ~EUR |
+|---|---|---|---|
+| 1 | Micro servo SG90 ×2 | "SG90 micro servo 9g" | 2-3 |
+| 2 | Pan-tilt bracket for SG90 | "SG90 pan tilt bracket kit" | 2-3 |
+| 3 | Green laser module 5mW | "laser module 532nm 5mW 3.3V" | 2-3 |
+| 4 | Siren module 12V | "active buzzer siren module 12V" | 3 |
+| 5 | LED 10W COB white + MOSFET | "10W COB LED module" + "IRF520 MOSFET module" | 4 |
+| 6 | PAM8403 amplifier + 3W speaker | "PAM8403 amplifier module" + "3W 4ohm speaker" | 5 |
+| 7 | Pogo pins (spring-loaded) | "pogo pin spring loaded 2mm" ×4 | 2 |
+| 8 | INA219 current/voltage sensor | "INA219 I2C current sensor module" | 1-2 |
 
-## Alimentación
+**Future total: ~21-25 EUR**
 
-| # | Componente | Especificaciones | Precio aprox | Link |
-|---|---|---|---|---|
-| 6 | LiPo 3S 5000mAh 25C | 11.1V, conector XT60, ~140×45×30mm | ~$30 | Amazon/AliExpress "3S 5000mAh 25C LiPo" |
-| 7 | Cargador balance LiPo | B3 Pro (solo 2S/3S) o iMAX B6 (universal) | ~$12 | Amazon/AliExpress "B3 LiPo charger" |
-| 8 | Alarma voltaje LiPo (opcional) | Avisa con buzzer cuando voltaje baja | ~$2 | Amazon/AliExpress "LiPo voltage alarm" |
-
-**Autonomía estimada:**
-- Consumo normal: ~1.6A (VF2 + cámara + motores marcha)
-- Con 5000mAh: **~3 horas** de operación continua
-- Con picos (stall motores): batería 25C soporta 125A — sin problema
-
-**Distribución eléctrica:**
-```
-LiPo 3S 11.1V 5000mAh
-    │
-    ├── XT60 → Step-down DC-DC → 5V/3A → VisionFive 2 (USB-C) + USB camera
-    │
-    └── XT60 → L298N (VCC motor) → 4× motores 310
-```
-
----
-
-## Visión
-
-| # | Componente | Especificaciones | Precio aprox | Link |
-|---|---|---|---|---|
-| 9 | USB Camera 720p/1080p | UVC compatible, ángulo amplio (>90°), con soporte | ~$12 | Amazon "USB camera wide angle 720p" |
-
-**Requisitos:** Que sea UVC estándar (plug & play, sin driver propietario). Ángulo amplio preferible para navegación. No necesita ser alta resolución — 720p sobra para SmolVLM.
-
----
-
-## Montaje
-
-| # | Componente | Especificaciones | Precio aprox | Link |
-|---|---|---|---|---|
-| 10 | Separadores M3 nylon (pack) | Para montar VF2 sobre chassis, varios largos | ~$3 | Amazon/AliExpress "M3 nylon standoff kit" |
-| 11 | Bridas plástico (zip ties) | Para sujetar cables y batería | ~$2 | Cualquier ferretería |
-
----
-
-## Resumen
-
-| Categoría | Subtotal |
-|---|---|
-| Chassis + motores + encoders | $35 |
-| Electrónica (driver + step-down + cables) | $11 |
-| Batería + cargador + alarma | $44 |
-| Cámara USB | $12 |
-| Montaje (separadores + bridas) | $5 |
-| **TOTAL** | **~$107** |
-
----
-
-## Ya tienes (no comprar)
-
-- VisionFive 2 (RISC-V SBC)
-- Cable USB-C (alimentación VF2)
-- microSD con el kernel
-- PC/Mac con LM Studio (brain server)
-
----
-
-## Conexiones VF2 → Hardware
+## Wiring Diagram
 
 ```
-VF2 GPIO 40-pin header
-│
-├── GPIO OUT → L298N IN1, IN2 (motor izquierdo)
-├── GPIO OUT → L298N IN3, IN4 (motor derecho)
-├── GPIO PWM → L298N ENA, ENB (velocidad)
-│
-├── GPIO IN  ← Encoder A/B motor izq (interrupt)
-├── GPIO IN  ← Encoder A/B motor der (interrupt)
-│
-├── USB port ← USB camera (UVC)
-│
-└── Ethernet/WiFi ←→ macOS brain server (TCP)
+18650 ×2 series (7.4V) ──┬── TB6612 VM (4 motors, pairs in parallel)
+                         └── DD05CVSA 5V ──┬── VF2 5V power
+                                           └── HC-SR04 VCC
+
+VF2 GPIO (PWM):
+  PWM0 ──── TB6612 PWMA (left motor pair)
+  PWM1 ──── TB6612 PWMB (right motor pair)
+  PWM2 ──── Buzzer (audio feedback)
+
+VF2 GPIO (digital output):
+  GPIO A ── TB6612 AIN1, AIN2 (left direction)
+  GPIO B ── TB6612 BIN1, BIN2 (right direction)
+  GPIO C ── LED green (status: monitoring)
+  GPIO D ── LED yellow (status: possible detection)
+  GPIO E ── LED red (status: confirmed detection)
+
+VF2 GPIO (digital input):
+  GPIO F ── HC-SR04 TRIG
+  GPIO G ── HC-SR04 ECHO (voltage divider 5V→3.3V: 2kΩ + 1kΩ)
+  GPIO H ── PIR sensor OUT (3.3V digital)
+  GPIO I ── IR sensor OUT (3.3V digital)
+  GPIO J ── Sound sensor DO (digital out)
+
+VF2 I2C bus 1:
+  SDA/SCL ── MPU6050 (IMU, addr 0x68)
+  SDA/SCL ── ADS1115 (ADC, addr 0x48) ← battery voltage, analog sensors
+  SDA/SCL ── INA219 (current/voltage, addr 0x40) ← in series with battery
+
+VF2 CSI:
+  15-pin flat cable ── RPi Camera
+
+VF2 UART0:
+  TX/RX ── LD19 LiDAR (115200 baud, 3.3V)
+
+VF2 UART1:
+  TX/RX ── ESP32 (WiFi bridge → macOS brain server)
+
+Encoder signals (from chassis kit):
+  ENC_L ── VF2 GPIO (interrupt-driven tick counting)
+  ENC_R ── VF2 GPIO (interrupt-driven tick counting)
 ```
 
-**Nota WiFi:** La VF2 no tiene WiFi integrado. Fase 1 = cable Ethernet. Fase 2 = USB WiFi dongle o ESP32 bridge (ver plan fases W/W-alt).
+## Sensor Integration Map
 
----
-
-## Fases de montaje
-
-1. **Montar chassis** — ensamblar motores + ruedas + chassis (viene con instrucciones)
-2. **Montar VF2** — separadores M3 sobre el chassis, atornillar VF2
-3. **Cableado motores** — motores → L298N → GPIO VF2
-4. **Cableado encoders** — encoder A/B → GPIO VF2 (pines con interrupt)
-5. **Alimentación** — LiPo → XT60 split → step-down 5V (VF2) + L298N (motores)
-6. **Cámara** — USB camera al puerto USB de VF2
-7. **Test** — boot kernel, probar motores via shell (`motor` cmd), leer encoders (`odom`), capturar cámara
-
----
-
-## Opcional (futuro)
-
-| Componente | Para qué | Precio |
-|---|---|---|
-| HC-SR04 ultrasonido ×2 | Rangefinder frontal + lateral | $3 |
-| MPU-6050 breakout | IMU real (ya tienes driver) | $3 |
-| ESP32-C3 devkit | WiFi bridge (fase W-alt) | $5 |
-| USB WiFi dongle RTL8188 | WiFi directo (fase W) | $8 |
-| GPS NEO-6M | Navegación exterior | $10 |
-| RPLIDAR A1 (usado) | SLAM / mapeo | $50-80 |
+| Sensor | Interface | Kernel Driver | Brain Use |
+|---|---|---|---|
+| LD19 LiDAR 2D | UART | lidar.rs | SLAM mapping, localization, path planning |
+| RPi Camera | CSI MIPI | csi.rs | VLM perception (SmolVLM) |
+| MPU6050 | I2C | imu (external crate) | Tilt safety, heading |
+| HC-SR04 | GPIO | rangefinder.rs | Low obstacles below LiDAR plane, glass detection |
+| ADS1115 | I2C | ads1115.rs | Battery voltage, analog inputs |
+| PIR | GPIO (digital) | gpio.rs | Fast motion trigger → wake VLM |
+| IR | GPIO (digital) | gpio.rs | Proximity, dock homing beacon |
+| Sound sensor | GPIO (digital) | gpio.rs | Glass break, impact detection |
+| Laser | GPIO/UART | rangefinder.rs | Precise distance |
+| Encoders | GPIO (interrupt) | encoder (robot crate) | Odometry, PID feedback |
+| Buzzer | PWM | buzzer.rs | Audio alerts, deterrent siren |
+| Status LEDs | GPIO ×3 | status_led.rs | Green/yellow/red state indicator |
+| INA219 | I2C | ina219.rs (future) | Current sensing, mAh counting, voltage sag, capacity % |
+| RTSP cameras ×4 | Network (WiFi) | N/A (brain only) | Fixed surveillance, motion detect → dispatch robot |

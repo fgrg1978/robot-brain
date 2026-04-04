@@ -1,0 +1,15 @@
+{
+  "robot_type": "wheeled",
+  "last_review": 1774937097.3119009,
+  "review_count": 1,
+  "rules": [
+    {
+      "id": "r1",
+      "rule": "rule one",
+      "reason": "r",
+      "confidence": 0.5,
+      "created": 1774937097.311956,
+      "last_reviewed": 1774937097.311956
+    }
+  ]
+}

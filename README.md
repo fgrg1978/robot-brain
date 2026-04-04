@@ -26,6 +26,20 @@ The robot sends sensor data and camera frames. The brain sees through a VLM (Smo
 - **api.py** — HTTP REST API
 - **telegram_bot.py** — Remote control via Telegram
 
+## Sensors
+
+The robot supports a full sensor suite via the kernel's driver layer:
+
+- **Vision** — RPi Camera (CSI MIPI) fed to SmolVLM for scene understanding
+- **IMU** — MPU6050 (I2C) for tilt safety and heading
+- **Rangefinders** — HC-SR04 ultrasonic (front), laser rangefinder (precise distance)
+- **ADC** — ADS1115 16-bit 4-channel (I2C) for battery voltage and analog inputs
+- **Digital sensors** — PIR (motion detection), IR (proximity/line following), sound sensor
+- **Encoders** — Wheel encoders (GPIO interrupt) for odometry and PID feedback
+- **Buzzer** — Passive piezo (PWM) for audio alerts and status tones
+
+See `docs/SHOPPING_LIST.md` for the full hardware BOM, wiring diagram, and sensor integration map.
+
 ## What's pending
 
 - **Phase T** — Real CSI camera streaming from kernel

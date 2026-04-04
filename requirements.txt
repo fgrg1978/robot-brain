@@ -1,4 +1,8 @@
 openai>=1.0.0
 pyyaml>=6.0
-matplotlib>=3.7.0   # optional — only needed for SITL visualizer (viz.py)
-Pillow>=10.0.0      # optional — SITL camera rendering (first-person raycasting)
+matplotlib>=3.7.0       # optional — SITL visualizer (viz.py)
+Pillow>=10.0.0          # optional — SITL camera rendering
+numpy>=1.24             # surround_view, star_tracker, SLAM
+scipy>=1.10             # optional — star_tracker detection
+opencv-python>=4.7      # optional — surround_view, motion_detect
+astropy>=5.3            # optional — star_tracker full precision (night flight)

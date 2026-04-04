@@ -15,6 +15,8 @@ from typing import Optional
 
 from openai import OpenAI
 from planner.skills import skill_list_prompt, get_skills
+from planner.experience import ExperienceStore
+from planner.meta import MetaReviewer
 
 
 _SYSTEM_TEMPLATE = """\
@@ -37,6 +39,8 @@ Rules:
 - If the task involves going somewhere, include NAVIGATE_TO with the location name.
 - If unsure, use STOP as the last step.
 - Return only valid JSON. No explanation.
+{heuristics}
+{experience}
 """
 
 
@@ -44,7 +48,9 @@ class TaskPlanner:
     """Decomposes a free-text task into a typed skill plan via LLM."""
 
     def __init__(self, host: str, port: int, model: str,
-                 robot_type: str = "wheeled"):
+                 robot_type: str = "wheeled",
+                 experience: ExperienceStore | None = None,
+                 meta: MetaReviewer | None = None):
         self.client = OpenAI(
             base_url=f"http://{host}:{port}/v1",
             api_key="not-needed",
@@ -53,6 +59,8 @@ class TaskPlanner:
         self.robot_type = robot_type
         self._skill_list = skill_list_prompt(robot_type)
         self._known_skills = set(get_skills(robot_type).keys())
+        self.experience = experience
+        self.meta = meta
 
     def plan(self, task: str, context: str = "") -> list[dict]:
         """Decompose a task description into a skill plan.
@@ -65,9 +73,22 @@ class TaskPlanner:
             List of {"skill": str, "args": dict} dicts.
             Falls back to [{"skill": "STOP"}] on any error.
         """
+        # Query past experience for similar tasks
+        experience_text = ""
+        if self.experience:
+            hits = self.experience.query(task, context)
+            experience_text = self.experience.format_for_prompt(hits)
+
+        # Inject learned heuristics from meta-reviewer
+        heuristics_text = ""
+        if self.meta:
+            heuristics_text = self.meta.rules_for_prompt()
+
         system = _SYSTEM_TEMPLATE.format(
             robot_type=self.robot_type,
             skill_list=self._skill_list,
+            heuristics=heuristics_text,
+            experience=experience_text,
         )
         user = task
         if context:
