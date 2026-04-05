@@ -11,6 +11,10 @@ Endpoints:
   POST /stop            — emergency stop
   POST /task            — {"task": "patrol room A then return"} — queue task
   POST /cmd             — {"skill": "FORWARD", "args": {"speed": 60}} — run one skill
+  GET  /topics          — list available data topics
+  GET  /topics/{name}   — latest data for a topic
+  GET  /config/{key}    — read a config value (dot notation)
+  POST /config/{key}    — set a config value (dot notation)
 
 Usage:
     api = APIServer(brain, port=8080)
@@ -126,6 +130,14 @@ class APIServer:
                 _response(writer, 200, self._full_status())
             elif path == "/mode":
                 _response(writer, 200, {"mode": self._current_mode()})
+            elif path == "/topics":
+                _response(writer, 200, self._list_topics())
+            elif path.startswith("/topics/"):
+                topic_name = path[len("/topics/"):]
+                _response(writer, 200, self._topic_data(topic_name))
+            elif path.startswith("/config/"):
+                key = path[len("/config/"):]
+                _response(writer, 200, self._config_get(key))
             else:
                 _response(writer, 404, {"error": "not found"})
 
@@ -172,6 +184,10 @@ class APIServer:
                     return
                 result = await self._execute_skill(skill, args)
                 _response(writer, 200, result)
+
+            elif path.startswith("/config/"):
+                key = path[len("/config/"):]
+                _response(writer, 200, self._config_set(key, payload))
 
             else:
                 _response(writer, 404, {"error": "not found"})
@@ -241,3 +257,83 @@ class APIServer:
             }
         except Exception as e:
             return {"error": str(e)}
+
+    # ── Topics ────────────────────────────────────────────────────────────────
+
+    DEFAULT_SENSOR_RATE_HZ = 20
+    DEFAULT_CAMERA_RATE_HZ = 2
+    STATUS_RATE_HZ = 1
+    CMD_MOTOR_RATE_HZ = 0       # on-demand, not periodic
+
+    def _list_topics(self) -> list[dict]:
+        """Return available data topics with their update rates."""
+        robot_cfg = self.brain.config.get("robot", {})
+        return [
+            {"name": "/sensors/imu",
+             "rate_hz": robot_cfg.get("sensor_rate_hz",
+                                      self.DEFAULT_SENSOR_RATE_HZ)},
+            {"name": "/sensors/camera",
+             "rate_hz": robot_cfg.get("camera_rate_hz",
+                                      self.DEFAULT_CAMERA_RATE_HZ)},
+            {"name": "/cmd/motor",
+             "rate_hz": self.CMD_MOTOR_RATE_HZ},
+            {"name": "/status",
+             "rate_hz": self.STATUS_RATE_HZ},
+        ]
+
+    ZERO_ACCEL = [0, 0, 0]
+    ZERO_GYRO = [0, 0, 0]
+
+    def _topic_data(self, topic_name: str) -> dict:
+        """Return latest data for a given topic."""
+        state = self.brain.state
+        if topic_name == "sensors/imu" and state.sensors:
+            return {
+                "accel_mg":  state.sensors.get("accel_mg", self.ZERO_ACCEL),
+                "gyro_mdps": state.sensors.get("gyro_mdps", self.ZERO_GYRO),
+                "battery_mv": state.sensors.get("battery_mv", 0),
+            }
+        elif topic_name == "sensors/camera":
+            return {
+                "has_image": len(state.last_image) > 0,
+                "image_age_s": round(time.time() - state.last_image_time, 2)
+                               if state.last_image_time else None,
+            }
+        elif topic_name == "cmd/motor":
+            return {"info": "write-only topic, POST /cmd to send commands"}
+        elif topic_name == "status":
+            return self._full_status()
+        return {"error": f"unknown topic: {topic_name}"}
+
+    # ── Config read/write ─────────────────────────────────────────────────────
+
+    CONFIG_SEPARATOR = "."
+
+    def _config_get(self, key: str) -> dict:
+        """Get a config value by dot-notation key (e.g. 'robot.type')."""
+        parts = key.split(self.CONFIG_SEPARATOR)
+        node = self.brain.config
+        for part in parts:
+            if isinstance(node, dict) and part in node:
+                node = node[part]
+            else:
+                return {"error": f"key not found: {key}"}
+        return {"key": key, "value": node}
+
+    def _config_set(self, key: str, body: dict) -> dict:
+        """Set a config value by dot-notation key. Body must have 'value'."""
+        if "value" not in body:
+            return {"error": "missing 'value' field in body"}
+        parts = key.split(self.CONFIG_SEPARATOR)
+        node = self.brain.config
+        for part in parts[:-1]:
+            if isinstance(node, dict) and part in node:
+                node = node[part]
+            else:
+                return {"error": f"key not found: {key}"}
+        last = parts[-1]
+        if not isinstance(node, dict):
+            return {"error": f"cannot set on non-dict: {key}"}
+        old_value = node.get(last)
+        node[last] = body["value"]
+        return {"key": key, "old_value": old_value, "value": body["value"]}

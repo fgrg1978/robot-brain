@@ -14,6 +14,7 @@ Architecture:
 
 import asyncio
 import logging
+import os
 import time
 import yaml
 
@@ -47,6 +48,8 @@ from planner.zones import ZoneManager
 from planner.tracker import IntrusionTracker
 from planner.experience import ExperienceStore
 from planner.meta import MetaReviewer
+from planner.robot_description import RobotDescription
+from planner.transforms import TransformTree
 from notifications import Notifier
 from telegram_bot import TelegramBot
 from api import APIServer
@@ -219,6 +222,24 @@ class BrainServer:
         api_cfg = self.config.get("api", {})
         self.api = APIServer(self, port=api_cfg.get("port", 8080)) \
                    if api_cfg.get("enabled", True) else None
+
+        # Robot description (declarative YAML hardware spec)
+        robot_desc_path = os.path.join(os.path.dirname(__file__), "robot.yaml")
+        if os.path.exists(robot_desc_path):
+            self.robot_description = RobotDescription.from_yaml(robot_desc_path)
+            logger.info("[Brain] Loaded robot description: %s (%s)",
+                        self.robot_description.name, self.robot_description.type)
+        else:
+            self.robot_description = None
+
+        # Transform tree (sensor frame offsets from base_link)
+        if self.robot_description:
+            self.transforms = TransformTree.from_robot_description(
+                self.robot_description)
+            logger.info("[Brain] Transform tree: %d frames",
+                        len(self.transforms.list_frames()))
+        else:
+            self.transforms = TransformTree()  # default with just base_link
 
     # ── ActuatorCmd sender (used by SkillRunner) ──────────────────────────────
 
