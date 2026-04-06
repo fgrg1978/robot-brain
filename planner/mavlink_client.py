@@ -294,3 +294,51 @@ class MavlinkClient:
             t.satellites = msg.satellites_visible
 
         t.timestamp = time.time()
+
+    # ── Failsafe handling (E08) ──────────────────────────────────────────
+
+    ## Brain heartbeat timeout — if brain stops commanding, trigger RTL.
+    BRAIN_HEARTBEAT_TIMEOUT_S = 10.0
+    ## Battery failsafe: RTL threshold percentage.
+    BATTERY_RTL_PCT = 30
+    ## Battery failsafe: LAND threshold percentage.
+    BATTERY_LAND_PCT = 15
+
+    async def check_failsafe(self) -> str | None:
+        """Check failsafe conditions. Returns action taken or None.
+
+        Call this periodically from the brain server loop.
+        Failsafe priority: LAND > RTL > None.
+        """
+        t = self._telemetry
+        if not t.connected:
+            return None  # no telemetry = can't assess
+
+        # Critical battery → immediate land
+        if t.battery_pct > 0 and t.battery_pct < self.BATTERY_LAND_PCT:
+            logger.critical("[MAVLink] CRITICAL battery %d%% — LAND", t.battery_pct)
+            await self.land()
+            return "land"
+
+        # Low battery → RTL
+        if t.battery_pct > 0 and t.battery_pct < self.BATTERY_RTL_PCT:
+            logger.warning("[MAVLink] Low battery %d%% — RTL", t.battery_pct)
+            await self.rtl()
+            return "rtl"
+
+        return None
+
+    async def failsafe_on_disconnect(self):
+        """Called when brain loses connection to the robot.
+
+        Triggers RTL if the drone is armed and airborne.
+        PX4 has its own RC-loss failsafe, but this covers brain-link loss.
+        """
+        t = self._telemetry
+        if t.armed and t.alt_m > 2.0:
+            logger.warning("[MAVLink] Brain disconnect — triggering RTL (alt=%.1fm)",
+                           t.alt_m)
+            await self.rtl()
+        elif t.armed:
+            logger.warning("[MAVLink] Brain disconnect — disarming (on ground)")
+            await self.disarm()

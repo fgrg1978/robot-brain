@@ -50,6 +50,12 @@ from planner.experience import ExperienceStore
 from planner.meta import MetaReviewer
 from planner.robot_description import RobotDescription
 from planner.transforms import TransformTree
+from planner.battery import BatteryMonitor
+from planner.gps_mission import GpsMission, Geofence, GpsPosition
+from planner.logger import MissionLogger
+from planner.payload import PayloadManager
+from planner.fleet import FleetPlanner
+from planner.offline import OfflineManager
 from notifications import Notifier
 from telegram_bot import TelegramBot
 from api import APIServer
@@ -205,8 +211,37 @@ class BrainServer:
         # Robot state
         self.state       = RobotState()
         self.safety_profile = SafetyProfile.for_robot_type(self.robot_type, self.config)
+        battery_mah = self.config.get("battery", {}).get("nominal_mah", 3600)
+        self.battery_monitor = BatteryMonitor(nominal_mah=battery_mah)
         self._writer: asyncio.StreamWriter | None = None
         self._prev_odom: dict = {"dist_mm": 0, "heading_cdeg": 0}
+
+        # GPS mission + geofence (E03)
+        self.gps_mission: GpsMission | None = None
+        geofence_cfg = self.config.get("geofence", {})
+        if geofence_cfg.get("enabled") and geofence_cfg.get("polygon"):
+            self.geofence = Geofence(polygon=geofence_cfg["polygon"],
+                                     margin_m=geofence_cfg.get("margin_m", 5.0))
+        else:
+            self.geofence = None
+
+        # Mission logger (E06)
+        log_dir = self.config.get("logging", {}).get("dir", "data/missions")
+        retention_days = self.config.get("logging", {}).get("retention_days", 90)
+        self.mission_logger = MissionLogger(log_dir=log_dir,
+                                            retention_days=retention_days)
+
+        # Payload manager (E04)
+        payload_cfg = self.config.get("payload", {})
+        self.payload_manager = PayloadManager(payload_cfg) if payload_cfg else None
+
+        # Fleet planner (E07)
+        fleet_cfg = self.config.get("fleet", {})
+        self.fleet_planner = FleetPlanner(fleet_cfg) if fleet_cfg.get("enabled") else None
+
+        # Offline autonomy manager (E05)
+        offline_cfg = self.config.get("offline", {})
+        self.offline_manager = OfflineManager(offline_cfg)
 
         # Current task description (for experience recording)
         self._current_task_desc: str = ""
@@ -307,6 +342,10 @@ class BrainServer:
             pkt = sensor_packet_from_bytes(self.robot_type, payload)
             self.state.update_sensors(pkt)
             self._feed_slam(pkt)
+            # E05: Track connection health
+            self.offline_manager.on_sensor_received(
+                battery_pct=self.battery_monitor.state.capacity_pct
+            )
             await self._safety_check(pkt, writer)
             # Check power mode timeout (ALERT → ECO after timeout)
             deescalated = await self.power.check_timeout(writer)
@@ -315,6 +354,32 @@ class BrainServer:
             # Check deterrent safety timeout
             if self.deterrent.active:
                 await self.deterrent.check_timeout(writer)
+            # Log sensor event (E06)
+            self.mission_logger.log_event("sensor", {
+                "battery_mv": pkt.battery_mv,
+                "dist_mm": getattr(pkt, "dist_mm", 0),
+                "heading_cdeg": getattr(pkt, "heading_cdeg", 0),
+            })
+
+            # Geofence check (E03)
+            if self.geofence and hasattr(pkt, "gps_lat") and pkt.gps_lat != 0:
+                pos = GpsPosition(lat=pkt.gps_lat / 1e7, lon=pkt.gps_lon / 1e7)
+                if pos.has_fix and not self.geofence.contains(pos):
+                    logger.warning("[GEOFENCE] Robot outside boundary!")
+                    asyncio.create_task(
+                        self.notifier.alert("Robot outside geofence boundary",
+                                            title="Geofence Violation")
+                    )
+
+            # Update detailed battery monitor (E09)
+            self.battery_monitor.update(
+                voltage_mv=pkt.battery_mv,
+                current_ma=getattr(pkt, "current_ma", 0),
+                mah_used=getattr(pkt, "mah_used", 0),
+                capacity_pct=getattr(pkt, "capacity_pct", -1),
+                sag_flag=getattr(pkt, "sag_flag", False),
+                failsafe=getattr(pkt, "failsafe_level", 0),
+            )
             # Battery monitoring → auto-dock
             new_dock_state = self.dock_manager.update_battery(pkt.battery_mv)
             if new_dock_state == DockState.LOW_BATTERY:
