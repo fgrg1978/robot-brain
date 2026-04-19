@@ -122,10 +122,23 @@ class TestCalibration:
 
 class TestBlending:
     def test_weight_masks_sum_coverage(self, surround):
-        """Masks should cover the BEV canvas without dead zones in the middle."""
+        """Masks should cover each camera quadrant of the BEV canvas.
+
+        The center of the canvas is deliberately left uncovered — that is
+        where the robot icon is drawn (ROBOT_ICON_WIDTH × ROBOT_ICON_HEIGHT
+        in surround_view.py). The 4 cameras cover a "ring" around the
+        robot: front (top), rear (bottom), left, right.
+        """
         total = np.zeros((800, 800), dtype=np.float32)
         for mask in surround._masks.values():
             total += mask
-        # Center of canvas should have coverage from at least one camera
-        center_val = total[400, 400]
-        assert center_val > 0, "Center of BEV has no camera coverage"
+        # Each camera's region (outside the central robot-icon zone) must
+        # have coverage from at least one mask.
+        samples = {
+            "front": total[150, 400],   # top-middle → front camera
+            "rear":  total[650, 400],   # bottom-middle → rear camera
+            "left":  total[400, 150],   # left-middle → left camera
+            "right": total[400, 650],   # right-middle → right camera
+        }
+        for name, val in samples.items():
+            assert val > 0, f"{name} quadrant has no camera coverage (val={val})"

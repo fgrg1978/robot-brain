@@ -56,6 +56,7 @@ from planner.logger import MissionLogger
 from planner.payload import PayloadManager
 from planner.fleet import FleetPlanner
 from planner.offline import OfflineManager
+from fleet import FleetManager
 from notifications import Notifier
 from telegram_bot import TelegramBot
 from api import APIServer
@@ -227,17 +228,18 @@ class BrainServer:
 
         # Mission logger (E06)
         log_dir = self.config.get("logging", {}).get("dir", "data/missions")
-        retention_days = self.config.get("logging", {}).get("retention_days", 90)
-        self.mission_logger = MissionLogger(log_dir=log_dir,
-                                            retention_days=retention_days)
+        self.mission_logger = MissionLogger(log_dir=log_dir)
 
         # Payload manager (E04)
         payload_cfg = self.config.get("payload", {})
         self.payload_manager = PayloadManager(payload_cfg) if payload_cfg else None
 
-        # Fleet planner (E07)
+        # Fleet planner (E07) — zone assignment / nearest-dispatch
         fleet_cfg = self.config.get("fleet", {})
         self.fleet_planner = FleetPlanner(fleet_cfg) if fleet_cfg.get("enabled") else None
+
+        # Fleet manager (E07) — per-connection robot registry + command fanout
+        self.fleet_manager = FleetManager(send_fn=protocol.send_packet)
 
         # Offline autonomy manager (E05)
         offline_cfg = self.config.get("offline", {})
@@ -291,6 +293,17 @@ class BrainServer:
         self.state.connected = True
         self._writer = writer
 
+        # Register in fleet (E07). Use peer addr as provisional id; a later
+        # STATUS packet may refine the robot_type.
+        robot_id = f"{addr[0]}:{addr[1]}" if addr else "robot_unknown"
+        self._current_robot_id = robot_id
+        self.fleet_manager.register(
+            robot_id=robot_id,
+            robot_type=self.robot_type,
+            name=self.config.get("robot", {}).get("name", robot_id),
+            writer=writer,
+        )
+
         # Set LED to monitoring (green) on connect
         await self.led.set_state("monitoring", writer)
 
@@ -320,6 +333,10 @@ class BrainServer:
         finally:
             self.state.connected = False
             self._writer = None
+            # Mark disconnected in the fleet registry (keeps record for history)
+            current_id = getattr(self, "_current_robot_id", None)
+            if current_id:
+                self.fleet_manager.mark_disconnected(current_id)
             if self.runner:
                 self.runner.interrupt("connection closed")
             writer.close()
@@ -342,6 +359,13 @@ class BrainServer:
             pkt = sensor_packet_from_bytes(self.robot_type, payload)
             self.state.update_sensors(pkt)
             self._feed_slam(pkt)
+            # Fleet heartbeat (E07): refresh last_seen + battery
+            current_id = getattr(self, "_current_robot_id", None)
+            if current_id:
+                self.fleet_manager.heartbeat(
+                    current_id,
+                    battery_mv=getattr(pkt, "battery_mv", None),
+                )
             # E05: Track connection health
             self.offline_manager.on_sensor_received(
                 battery_pct=self.battery_monitor.state.capacity_pct
@@ -401,6 +425,10 @@ class BrainServer:
         elif pkt_type == STATUS:
             pkt = StatusPacket.from_bytes(payload)
             self.state.update_status(pkt)
+            # Fleet heartbeat (E07): STATUS is the canonical heartbeat packet
+            current_id = getattr(self, "_current_robot_id", None)
+            if current_id:
+                self.fleet_manager.heartbeat(current_id)
             await self._on_status(pkt)
 
     # ── Patrol callbacks ─────────────────────────────────────────────────────

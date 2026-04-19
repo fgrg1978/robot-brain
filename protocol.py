@@ -7,7 +7,8 @@ Robot -> Server types (0x01-0x7F):
   0x01  SENSOR_PACKET   wheeled: 62B, drone: 68B, humanoid: variable
   0x02  CAMERA_FRAME    variable
   0x03  STATUS          8 bytes (includes robot_type)
-  0x04  SENSOR_COMPACT  20 bytes (low-bandwidth: LoRa/RF)
+  0x04  OTA_ACK         3 bytes (status + slot + reserved)
+  0x05  SENSOR_COMPACT  20 bytes (low-bandwidth: LoRa/RF)
 
 Server -> Robot types (0x80-0xFF):
   0x80  ACTUATOR_CMD    3 + 2*N bytes (generic: type + channels)
@@ -32,7 +33,8 @@ MAGIC = b"\x42\x52"  # "BR"
 SENSOR_PACKET   = 0x01
 CAMERA_FRAME    = 0x02
 STATUS          = 0x03
-SENSOR_COMPACT  = 0x04
+OTA_ACK         = 0x04  # kernel ack for OTA chunks (matches kernel PKT_OTA_ACK)
+SENSOR_COMPACT  = 0x05  # low-bandwidth sensor frame (LoRa/RF)
 
 # Packet types — Server -> Robot
 ACTUATOR_CMD    = 0x80
@@ -40,6 +42,11 @@ VELOCITY_CMD    = 0x80  # alias (backward compat)
 MODE_CMD        = 0x81
 WAYPOINT_CMD    = 0x82
 CONFIG_CMD      = 0x83
+OTA_BEGIN       = 0x84
+OTA_CHUNK       = 0x85
+OTA_END         = 0x86
+PAYLOAD_CMD     = 0x87  # E04: payload control (spray, gripper, cam trigger)
+ESTOP_CMD       = 0x88  # remote emergency stop
 
 # Robot types
 ROBOT_WHEELED   = 0
@@ -139,12 +146,25 @@ def parse_packet(data: bytes) -> Optional[tuple[int, bytes]]:
     return (pkt_type, payload)
 
 
+#: Largest legitimate packet payload we will ever accept. Anything
+#: bigger is treated as malformed/hostile so a corrupt or malicious
+#: peer can't make us readexactly() up to 64 KiB on every read and
+#: hang the connection (slowloris-style DoS).
+MAX_PAYLOAD_BYTES = 4 * 1024
+
+
 async def read_packet(reader) -> Optional[tuple[int, bytes]]:
     """Read one packet from an asyncio StreamReader."""
     header = await reader.readexactly(5)
     if header[:2] != MAGIC:
         return None
     pkt_type, length = struct.unpack_from("<BH", header, 2)
+    if length > MAX_PAYLOAD_BYTES:
+        # Refuse oversize. Returning None signals the caller to drop
+        # this connection; without this guard a peer claiming length=65535
+        # makes us block readexactly(65536) forever even if they only
+        # intend to send a few bytes.
+        return None
     rest = await reader.readexactly(length + 1)
     payload = rest[:length]
     if crc8(header + payload) != rest[length]:
@@ -284,14 +304,30 @@ class SensorPacketHumanoid:
 
     ROBOT_TYPE = ROBOT_HUMANOID
 
+    # Anti-DoS bound: real humanoids have <= 32 actuated joints. Reject
+    # packets claiming more so a malformed kernel/man-in-the-middle can't
+    # cause struct.unpack_from to either read past the buffer (raising
+    # struct.error and spamming the asyncio handler) or — worse on
+    # platforms where bytes are pre-padded — consume all available memory.
+    MAX_JOINTS = 32
+
     @classmethod
     def from_bytes(cls, data: bytes) -> "SensorPacketHumanoid":
+        if len(data) < _HDR_SIZE + 1:
+            raise ValueError("humanoid sensor packet truncated (header)")
         ts, ax, ay, az, gx, gy, gz, batt = struct.unpack_from(_HDR_FMT, data)
         offset = _HDR_SIZE
         num_joints = data[offset]
         offset += 1
+        if num_joints > cls.MAX_JOINTS:
+            raise ValueError(
+                f"humanoid sensor packet num_joints={num_joints} > MAX={cls.MAX_JOINTS}"
+            )
+        joints_bytes = num_joints * 2
+        if len(data) < offset + joints_bytes + 4:
+            raise ValueError("humanoid sensor packet truncated (joints+feet)")
         joints = list(struct.unpack_from(f"<{num_joints}h", data, offset))
-        offset += num_joints * 2
+        offset += joints_bytes
         fl, fr = struct.unpack_from("<HH", data, offset)
         return cls(
             timestamp_ms=ts, battery_mv=batt,
@@ -482,3 +518,64 @@ class ConfigCmd:
     def buzzer(cls, pattern: int) -> "ConfigCmd":
         """Create a buzzer command."""
         return cls(config_key=BUZZER_CONFIG_KEY, value=pattern)
+
+
+# ── PayloadCmd (E04) — spray pump, gripper servo, camera trigger ──────────────
+
+# Payload types (payload_type field)
+PAYLOAD_TYPE_SPRAY       = 0  # spray pump (GPIO on/off)
+PAYLOAD_TYPE_GRIPPER     = 1  # gripper servo (0=closed … 100=open)
+PAYLOAD_TYPE_CAM_TRIGGER = 2  # external camera shutter trigger (GPIO pulse)
+
+# Generic on/off values
+PAYLOAD_OFF = 0
+PAYLOAD_ON  = 1
+
+# Gripper position shortcuts
+GRIPPER_OPEN   = 100
+GRIPPER_CLOSED = 0
+
+
+@dataclass
+class PayloadCmd:
+    """E04: payload control command (spray, gripper, external camera trigger).
+
+    Wire format (5 bytes): payload_type(1) + channel(1) + value(1) + duration_ms(2 LE)
+
+    payload_type: PAYLOAD_TYPE_SPRAY / GRIPPER / CAM_TRIGGER
+    channel:      device index (0 = first of that type)
+    value:        0/1 for on/off; 0-100 for gripper position
+    duration_ms:  0 = indefinite / one-shot; >0 = auto-off after N ms
+    """
+    payload_type: int
+    channel:      int = 0
+    value:        int = 0
+    duration_ms:  int = 0
+
+    FORMAT = "<BBBH"  # 5 bytes
+
+    def to_bytes(self) -> bytes:
+        return struct.pack(self.FORMAT,
+            self.payload_type, self.channel, self.value, self.duration_ms)
+
+    @classmethod
+    def from_bytes(cls, data: bytes) -> "PayloadCmd":
+        pt, ch, val, dur = struct.unpack(cls.FORMAT, data[:5])
+        return cls(payload_type=pt, channel=ch, value=val, duration_ms=dur)
+
+    @classmethod
+    def spray(cls, on: bool, channel: int = 0, duration_ms: int = 0) -> "PayloadCmd":
+        """Turn spray pump on or off."""
+        return cls(payload_type=PAYLOAD_TYPE_SPRAY, channel=channel,
+                   value=PAYLOAD_ON if on else PAYLOAD_OFF, duration_ms=duration_ms)
+
+    @classmethod
+    def gripper(cls, pos: int, channel: int = 0) -> "PayloadCmd":
+        """Set gripper position (0=closed, 100=open)."""
+        return cls(payload_type=PAYLOAD_TYPE_GRIPPER, channel=channel,
+                   value=max(0, min(100, pos)))
+
+    @classmethod
+    def cam_trigger(cls, channel: int = 0) -> "PayloadCmd":
+        """Fire external camera shutter trigger pulse."""
+        return cls(payload_type=PAYLOAD_TYPE_CAM_TRIGGER, channel=channel, value=1)

@@ -92,8 +92,15 @@ class TelegramBot:
     POLL_TIMEOUT = 25   # seconds — Telegram long-poll window
 
     def __init__(self, tg_config: dict, brain: "BrainServer"):
-        self.token   = tg_config.get("bot_token", "")
-        self.chat_id = tg_config.get("chat_id", "")
+        # Token: prefer env var so the actual secret never lives in a
+        # YAML file that might be world-readable or accidentally
+        # committed. Falls back to config for backwards compatibility.
+        # Chat-id is not secret — keep config support for it.
+        import os as _os
+        self.token   = _os.environ.get("ROBOT_BRAIN_TG_BOT_TOKEN", "") \
+                       or tg_config.get("bot_token", "")
+        self.chat_id = _os.environ.get("ROBOT_BRAIN_TG_CHAT_ID", "") \
+                       or tg_config.get("chat_id", "")
         self.brain   = brain
         self._offset = 0
         self._running = False
@@ -117,7 +124,11 @@ class TelegramBot:
             print("[TGBot] No bot_token — disabled")
             return
         self._running = True
-        print(f"[TGBot] Polling (chat_id={self.chat_id})")
+        # Don't print full chat_id — it's not strictly secret, but a
+        # public log shouldn't make it trivial to identify the operator.
+        cid = str(self.chat_id)
+        masked = (cid[:3] + "***" + cid[-2:]) if len(cid) >= 6 else "***"
+        print(f"[TGBot] Polling (chat_id={masked})")
         while self._running:
             try:
                 updates = await asyncio.to_thread(

@@ -110,17 +110,24 @@ class TaskPlanner:
             print(f"[TaskPlanner] Error: {e}")
             return [{"skill": "STOP"}]
 
+    # Compile-once regex patterns (cls-level so multiple TaskPlanner
+    # instances share them and we avoid the per-call `re.compile` cost,
+    # which was visible in profiles since LLM responses arrive at task
+    # rate and re.sub had to recompile each invocation).
+    _RE_FENCE_START = re.compile(r"^```[a-z]*\n?")
+    _RE_FENCE_END   = re.compile(r"\n?```$")
+    _RE_JSON_ARRAY  = re.compile(r"\[.*?\]", re.DOTALL)
+
     def _parse(self, raw: str) -> list[dict]:
         """Parse and validate the LLM JSON response."""
-        # Strip markdown fences if present
-        raw = re.sub(r"^```[a-z]*\n?", "", raw.strip())
-        raw = re.sub(r"\n?```$", "", raw.strip())
+        raw = self._RE_FENCE_START.sub("", raw.strip())
+        raw = self._RE_FENCE_END.sub("", raw.strip())
 
         try:
             plan = json.loads(raw)
         except json.JSONDecodeError:
             # Try to extract the first JSON array found
-            m = re.search(r"\[.*?\]", raw, re.DOTALL)
+            m = self._RE_JSON_ARRAY.search(raw)
             if not m:
                 return [{"skill": "STOP"}]
             try:

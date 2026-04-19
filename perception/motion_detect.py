@@ -1,207 +1,264 @@
 """Motion detection — GMM background subtraction pipeline (B04).
 
-Replaces simple frame differencing with a Gaussian Mixture Model (GMM)
-background subtractor. Each pixel is modeled by K gaussian distributions
-that learn the background over time, adapting to gradual lighting changes.
+Replaces the legacy two-frame differencing with a full GMM pipeline
+reverse-engineered from the Tapo C510W AMS-VDR system:
 
-Pipeline: JPEG → downsample → grayscale → GMM → foreground mask →
-          morphology → blob detection → trajectory confirmation → score.
+    JPEG -> downsample -> grayscale -> GMM -> foreground mask ->
+    morphological open -> connected components -> dust filter ->
+    trajectory confirmation -> motion score 0..100
 
-Based on Tapo C510W AMS-VDR pipeline (see docs/motion-detection-upgrade.md).
+The core GMM and blob logic live in `perception.gmm`. The trajectory
+tracker lives in `perception.tracker`. This module glues them together
+and preserves the public `MotionDetector` API:
 
-Usage:
-    detector = MotionDetector(sensitivity=7)
-    score = detector.feed(frame_bytes)  # JPEG bytes
-    if score > 0:
-        # call VLM on confirmed motion
+    detector = MotionDetector(sensitivity=7, lighting_mode="auto")
+    score = detector.feed(jpeg_bytes)   # float in [0.0, 100.0]
+    if score > 0: ...
+
+During the GMM warm-up window (~200 frames) the detector falls back to
+the legacy frame-diff scoring so the caller still gets useful output
+while the background model converges.
+
+See docs/motion-detection-upgrade.md for algorithm details.
 """
 
-import math
-import time
-from dataclasses import dataclass, field
+from __future__ import annotations
+
+from dataclasses import dataclass
+
+from perception.gmm import (
+    Blob,
+    GMMProfile,
+    GMM_LEARNING_RATE,
+    GMM_WARMUP_FRAMES,
+    MORPH_DILATE_KSIZE_DEFAULT,
+    MORPH_ERODE_KSIZE_DEFAULT,
+    build_gmm,
+    detect_blobs,
+    morph_open,
+)
+from perception.tracker import (
+    BlobTracker,
+    TRAJECTORY_CONFIRM_FRAMES_DEFAULT,
+    TRAJECTORY_MAX_GAP_FRAMES_DEFAULT,
+    TRAJECTORY_SEARCH_RADIUS_PX_DEFAULT,
+    Track,
+)
 
 # ---------------------------------------------------------------------------
-# Constants — work resolution
+# Work resolution (downsample target)
 # ---------------------------------------------------------------------------
 
-## Downsample width for processing (matches Tapo sub_vframe scale).
-WORK_WIDTH = 160
-## Downsample height computed from aspect ratio at runtime.
-WORK_HEIGHT_DEFAULT = 90
+## Width (in pixels) used for GMM inference. Matches Tapo sub_vframe scale.
+WORK_WIDTH: int = 160
+
+## Fallback height used when the first frame has unknown aspect ratio.
+WORK_HEIGHT_DEFAULT: int = 90
+
+# Re-exports so callers can `from perception.motion_detect import GMM_*`.
+__all__ = [
+    "MotionDetector",
+    "MotionScore",
+    "PROFILES",
+    "WORK_WIDTH",
+    "WORK_HEIGHT_DEFAULT",
+    "SENSITIVITY_AREA_MAP",
+    "SENSITIVITY_MIN", "SENSITIVITY_MAX", "SENSITIVITY_DEFAULT",
+    "DUST_MAX_AREA_PX", "DUST_IR_ZONE_TOP_PCT", "DUST_MAX_LIFETIME_FRAMES",
+    "EDGE_MARGIN_PCT",
+    "MOTION_THRESHOLD_PCT", "MOTION_PIXEL_DIFF_THRESHOLD",
+    "MOTION_DOWNSAMPLE_WIDTH", "MOTION_BLUR_RADIUS",
+]
 
 # ---------------------------------------------------------------------------
-# GMM parameters (from Tapo ams.config)
+# Sensitivity 1..10 -> area threshold in percent (Tapo-derived mapping).
+# Index 0 = lowest sensitivity, index 9 = highest.
 # ---------------------------------------------------------------------------
 
-## Number of gaussian components per pixel.
-GMM_NUM_GAUSSIANS = 3
-## Learning rate: how fast background adapts (2% per frame).
-GMM_LEARNING_RATE = 0.02
-## Proportion of gaussians forming background model.
-GMM_BACKGROUND_RATIO = 0.7
-## Initial weight for new gaussian component.
-GMM_WEIGHT_INIT = 0.05
-## Base noise sigma (varies by profile).
-GMM_NOISE_SIGMA = 5.0
-## Standard deviations threshold for foreground classification.
-GMM_VAR_THRESH = 4.0
-## Frames of history for model convergence.
-GMM_WARMUP_FRAMES = 200
+SENSITIVITY_MIN: int = 1
+SENSITIVITY_MAX: int = 10
+SENSITIVITY_DEFAULT: int = 7
+
+## Percentage of work-resolution frame that must be foreground at each level.
+SENSITIVITY_AREA_MAP: tuple[float, ...] = (
+    13.5, 8.5, 5.0, 3.3, 2.3, 1.55, 1.2, 0.73, 0.63, 0.50,
+)
 
 # ---------------------------------------------------------------------------
-# Blob detection / filtering
+# Day/night profiles (B04.4). Dust filter enabled only for night_ir.
 # ---------------------------------------------------------------------------
 
-## Minimum blob area in pixels at work resolution.
-MIN_BLOB_AREA_PX = 20
-## Morphological erode kernel size.
-MORPH_ERODE_SIZE = 3
-## Morphological dilate kernel size.
-MORPH_DILATE_SIZE = 5
-## Edge margin percentage (reject blobs mostly on borders).
-EDGE_MARGIN_PCT = 10
-
-# ---------------------------------------------------------------------------
-# Dust / insect filter (for IR cameras)
-# ---------------------------------------------------------------------------
-
-## Maximum blob area to be classified as dust.
-DUST_MAX_AREA_PX = 15
-## Maximum lifetime in frames for dust classification.
-DUST_MAX_LIFETIME_FRAMES = 2
-## Top percentage of frame considered IR hotspot zone.
-DUST_IR_ZONE_TOP_PCT = 30
-
-# ---------------------------------------------------------------------------
-# Trajectory confirmation
-# ---------------------------------------------------------------------------
-
-## Consecutive frames a blob must persist to confirm motion.
-TRAJECTORY_CONFIRM_FRAMES = 4
-## Search radius for matching blobs between frames (pixels).
-TRAJECTORY_SEARCH_RADIUS_PX = 8
-## Maximum frames without detection before dropping a track.
-TRAJECTORY_MAX_GAP_FRAMES = 3
-
-# ---------------------------------------------------------------------------
-# Sensitivity → area threshold mapping (Tapo 10-level, level 1=low, 10=high)
-# ---------------------------------------------------------------------------
-
-SENSITIVITY_AREA_MAP = [13.5, 8.5, 5.0, 3.3, 2.3, 1.55, 1.2, 0.73, 0.63, 0.50]
-
-# ---------------------------------------------------------------------------
-# Day/Night profiles
-# ---------------------------------------------------------------------------
-
-PROFILES = {
-    "day": {
-        "noise_sigma": 5.0,
-        "var_thresh": 4.0,
-        "min_blob_area": 45,
-        "learning_rate": 0.02,
-        "dust_filter": False,
-    },
-    "night_ir": {
-        "noise_sigma": 7.0,
-        "var_thresh": 5.0,
-        "min_blob_area": 60,
-        "learning_rate": 0.02,
-        "dust_filter": True,
-    },
-    "night_color": {
-        "noise_sigma": 10.0,
-        "var_thresh": 5.0,
-        "min_blob_area": 60,
-        "learning_rate": 0.02,
-        "dust_filter": False,
-    },
+## Default day profile.
+PROFILE_DAY: dict = {
+    "noise_sigma": 5.0,
+    "var_thresh": 4.0,
+    "min_blob_area": 45,
+    "learning_rate": GMM_LEARNING_RATE,
+    "dust_filter": False,
 }
 
-# Legacy constants (kept for backward compatibility in tests)
-MOTION_THRESHOLD_PCT = 15
-MOTION_PIXEL_DIFF_THRESHOLD = 30
-MOTION_BLUR_RADIUS = 2
-MOTION_DOWNSAMPLE_WIDTH = WORK_WIDTH
+## Night w/ IR illumination — more noise, insects, IR hotspots.
+PROFILE_NIGHT_IR: dict = {
+    "noise_sigma": 7.0,
+    "var_thresh": 5.0,
+    "min_blob_area": 60,
+    "learning_rate": GMM_LEARNING_RATE,
+    "dust_filter": True,
+}
+
+## Night w/ white/visible lighting — highest noise, no IR hotspots.
+PROFILE_NIGHT_COLOR: dict = {
+    "noise_sigma": 10.0,
+    "var_thresh": 5.0,
+    "min_blob_area": 60,
+    "learning_rate": GMM_LEARNING_RATE,
+    "dust_filter": False,
+}
+
+PROFILES: dict[str, dict] = {
+    "day": PROFILE_DAY,
+    "night_ir": PROFILE_NIGHT_IR,
+    "night_color": PROFILE_NIGHT_COLOR,
+}
+
+## Mean-brightness threshold used by `auto` lighting mode to swap profiles.
+AUTO_NIGHT_BRIGHTNESS_THRESHOLD: int = 50
+
+# ---------------------------------------------------------------------------
+# Blob/edge/dust constants (B04.2 + B04.4)
+# ---------------------------------------------------------------------------
+
+## Reject blobs whose centroid is within this % of the frame border.
+EDGE_MARGIN_PCT: int = 10
+
+## Max area (pixels) for a blob to still be considered "dust".
+DUST_MAX_AREA_PX: int = 15
+
+## Dust must disappear within this many frames to qualify.
+DUST_MAX_LIFETIME_FRAMES: int = 2
+
+## IR hotspot zone = top X% of the frame.
+DUST_IR_ZONE_TOP_PCT: int = 30
+
+## Scale factor applied to raw fg_pct/thresh ratio before capping at 100.
+SCORE_MULTIPLIER: float = 50.0
+
+## Hard cap on motion score.
+SCORE_MAX: float = 100.0
+
+## Lower bound on area-threshold denominator (guard div-by-zero).
+SCORE_AREA_THRESH_FLOOR: float = 0.1
+
+# ---------------------------------------------------------------------------
+# Legacy frame-diff constants (kept for API compat + used during warm-up).
+# ---------------------------------------------------------------------------
+
+## Default "motion occurred" threshold (percent of pixels changed).
+MOTION_THRESHOLD_PCT: int = 15
+
+## Default |prev - curr| threshold, in 8-bit grayscale units.
+MOTION_PIXEL_DIFF_THRESHOLD: int = 30
+
+## Default work width for the legacy path (aliases WORK_WIDTH).
+MOTION_DOWNSAMPLE_WIDTH: int = WORK_WIDTH
+
+## Default blur radius (unused by GMM path but preserved for compat).
+MOTION_BLUR_RADIUS: int = 2
 
 
 # ---------------------------------------------------------------------------
-# Gaussian component (per-pixel)
+# MotionScore — richer return payload if the caller wants it.
 # ---------------------------------------------------------------------------
 
 @dataclass
-class GaussianComponent:
-    mean: float = 0.0
-    variance: float = 25.0  # GMM_NOISE_SIGMA^2
-    weight: float = 0.0
+class MotionScore:
+    """Structured output of one `feed()` call.
+
+    `feed()` continues to return a plain float for API compat; this
+    struct is populated on each call and accessible via
+    `detector.last_score` for callers that want blob positions, bboxes,
+    or trajectory ids.
+    """
+    score: float = 0.0
+    blobs: list[Blob] = None                  # type: ignore[assignment]
+    confirmed_tracks: list[Track] = None      # type: ignore[assignment]
+    warmup: bool = True
+
+    def __post_init__(self) -> None:
+        if self.blobs is None:
+            self.blobs = []
+        if self.confirmed_tracks is None:
+            self.confirmed_tracks = []
 
 
 # ---------------------------------------------------------------------------
-# Tracked blob
-# ---------------------------------------------------------------------------
-
-@dataclass
-class TrackedBlob:
-    id: int = 0
-    cx: float = 0.0
-    cy: float = 0.0
-    area: int = 0
-    frames_seen: int = 0
-    frames_missing: int = 0
-
-    @property
-    def confirmed(self) -> bool:
-        return self.frames_seen >= TRAJECTORY_CONFIRM_FRAMES
-
-
-# ---------------------------------------------------------------------------
-# MotionDetector (GMM-based)
+# MotionDetector — top-level orchestrator
 # ---------------------------------------------------------------------------
 
 class MotionDetector:
     """GMM-based motion detector with trajectory confirmation.
 
-    Drop-in replacement: same `feed(jpeg_bytes) -> float` API.
+    Drop-in replacement for the original frame-diff detector:
+    `feed(jpeg_bytes) -> float in [0, 100]`.
+
+    B04.5 config: accepts `sensitivity` (1-10), `lighting_mode`
+    ("auto"|"day"|"night_ir"|"night_color"), `dust_filter` (bool),
+    and `trajectory_confirm` (frames). Legacy `threshold_pct`/
+    `pixel_diff` params are accepted (so existing callers/tests keep
+    working) and reused for the warm-up frame-diff fallback.
     """
 
     def __init__(
         self,
-        sensitivity: int = 7,
+        sensitivity: int = SENSITIVITY_DEFAULT,
         lighting_mode: str = "auto",
         dust_filter: bool = False,
-        trajectory_confirm: int = TRAJECTORY_CONFIRM_FRAMES,
-        # Legacy compat params (ignored by GMM but accepted for API compat)
+        trajectory_confirm: int = TRAJECTORY_CONFIRM_FRAMES_DEFAULT,
+        # Legacy compat parameters:
         threshold_pct: int = MOTION_THRESHOLD_PCT,
         pixel_diff: int = MOTION_PIXEL_DIFF_THRESHOLD,
     ):
-        self.sensitivity = max(1, min(10, sensitivity))
+        self.sensitivity = max(SENSITIVITY_MIN, min(SENSITIVITY_MAX, sensitivity))
         self.lighting_mode = lighting_mode
         self.dust_filter_enabled = dust_filter
         self.trajectory_confirm = trajectory_confirm
-        self.threshold_pct = threshold_pct  # legacy compat
-        self.pixel_diff = pixel_diff        # legacy compat
+        self.threshold_pct = threshold_pct
+        self.pixel_diff = pixel_diff
 
-        # GMM state (initialized on first frame)
-        self._gmm: list[list[GaussianComponent]] | None = None
+        # Active profile (may be swapped by auto-detect each frame).
+        profile_name = lighting_mode if lighting_mode in PROFILES else "day"
+        self._profile_dict = PROFILES[profile_name]
+        self._profile = GMMProfile.from_dict(self._profile_dict)
+
+        # Area threshold (% of frame) derived from sensitivity.
+        self._area_thresh_pct = SENSITIVITY_AREA_MAP[self.sensitivity - 1]
+
+        # Pipeline components — built lazily on first frame.
+        self._gmm = None
+        self._tracker = BlobTracker(
+            confirm_frames=trajectory_confirm,
+            search_radius_px=TRAJECTORY_SEARCH_RADIUS_PX_DEFAULT,
+            max_gap_frames=TRAJECTORY_MAX_GAP_FRAMES_DEFAULT,
+        )
+
+        # Frame metadata.
         self._width = 0
         self._height = 0
         self._frame_count = 0
 
-        # Trajectory tracker
-        self._tracks: list[TrackedBlob] = []
-        self._next_track_id = 1
-
-        # Profile (resolved on first frame or when mode changes)
-        self._profile = PROFILES["day"]
-        self._area_thresh_pct = SENSITIVITY_AREA_MAP[self.sensitivity - 1]
-
-        # Fallback for warmup period
+        # Warm-up fallback state.
         self._prev_gray: list[int] | None = None
 
-    def feed(self, jpeg_bytes: bytes) -> float:
-        """Feed a JPEG frame. Returns motion score 0-100.
+        # Last full result (for callers that want structured data).
+        self.last_score: MotionScore = MotionScore()
 
-        Returns 0 during GMM warmup (first ~200 frames), using legacy
-        frame differencing as fallback.
+    # ── Public API ───────────────────────────────────────────────────────
+
+    def feed(self, jpeg_bytes: bytes) -> float:
+        """Feed one JPEG frame. Returns a 0..100 motion score.
+
+        Returns 0 during the first frame (no prev reference) and uses
+        frame-diff during the GMM warm-up window.
         """
         gray = self._to_grayscale_sized(jpeg_bytes)
         if gray is None:
@@ -209,364 +266,154 @@ class MotionDetector:
 
         self._frame_count += 1
 
-        # Initialize GMM on first frame
+        # First frame: initialize GMM and return 0 — we have no reference.
         if self._gmm is None:
-            self._init_gmm(gray)
+            self._gmm = build_gmm(self._width, self._height, self._profile)
+            self._gmm.update(gray)   # seeds internal state
             self._prev_gray = gray
+            self.last_score = MotionScore(warmup=True)
             return 0.0
 
-        # Auto-detect lighting mode
+        # Auto-detect lighting mode (may swap profile this frame).
         if self.lighting_mode == "auto":
             self._auto_detect_lighting(gray)
 
-        # Update GMM and get foreground mask
-        fg_mask = self._gmm_update(gray)
-
-        # During warmup, use legacy frame diff as fallback
+        # Warm-up: use frame diff until GMM converges.
         if self._frame_count < GMM_WARMUP_FRAMES:
+            # Still advance the GMM so it converges in the background.
+            self._gmm.update(gray)
             score = self._legacy_score(gray)
             self._prev_gray = gray
+            self.last_score = MotionScore(score=score, warmup=True)
             return score
 
         self._prev_gray = gray
 
-        # Morphological cleanup
-        fg_mask = self._morph_cleanup(fg_mask)
+        # Main GMM pipeline.
+        fg_mask = self._gmm.update(gray)
+        fg_mask = morph_open(
+            fg_mask, self._width, self._height,
+            erode_ksize=MORPH_ERODE_KSIZE_DEFAULT,
+            dilate_ksize=MORPH_DILATE_KSIZE_DEFAULT,
+        )
 
-        # Blob detection
-        blobs = self._detect_blobs(fg_mask)
+        min_area = self._profile.min_blob_area
+        edge_margin = int(max(self._width, self._height) * EDGE_MARGIN_PCT / 100)
+        blobs = detect_blobs(
+            fg_mask, self._width, self._height,
+            min_area=min_area,
+            edge_margin_px=edge_margin,
+        )
 
-        # Dust filter
-        if self._profile.get("dust_filter", False) or self.dust_filter_enabled:
+        # Dust / insect filter for IR cameras (B04.4).
+        if self._profile.dust_filter or self.dust_filter_enabled:
             blobs = self._filter_dust(blobs)
 
-        # Trajectory tracking
-        confirmed = self._update_tracks(blobs)
+        # Trajectory confirmation (B04.3).
+        confirmed = self._tracker.update(blobs)
 
-        # Compute score
-        if not confirmed:
-            return 0.0
+        score = self._score(confirmed)
+        self.last_score = MotionScore(
+            score=score,
+            blobs=blobs,
+            confirmed_tracks=confirmed,
+            warmup=False,
+        )
+        return score
 
-        total_area = sum(b.area for b in confirmed)
-        frame_area = self._width * self._height
-        if frame_area == 0:
-            return 0.0
-
-        fg_pct = (total_area / frame_area) * 100
-        raw_score = min((fg_pct / max(self._area_thresh_pct, 0.1)) * 50, 100)
-        return raw_score
-
-    def reset(self):
-        """Clear all state."""
+    def reset(self) -> None:
+        """Clear all pipeline state (including warm-up counter)."""
         self._gmm = None
         self._prev_gray = None
-        self._tracks = []
+        self._tracker.reset()
         self._frame_count = 0
+        self.last_score = MotionScore()
 
     @property
     def warmup_progress(self) -> float:
-        """GMM warmup progress (0.0 to 1.0)."""
+        """GMM warm-up progress in [0.0, 1.0]."""
         return min(self._frame_count / GMM_WARMUP_FRAMES, 1.0)
 
-    # ── GMM core ─────────────────────────────────────────────────────────
+    @property
+    def frame_count(self) -> int:
+        return self._frame_count
 
-    def _init_gmm(self, gray: list[int]):
-        """Initialize GMM state from first frame."""
-        n_pixels = len(gray)
-        sigma = self._profile.get("noise_sigma", GMM_NOISE_SIGMA)
-        var_init = sigma * sigma
+    # ── Scoring ──────────────────────────────────────────────────────────
 
-        self._gmm = []
-        for px_val in gray:
-            components = []
-            for k in range(GMM_NUM_GAUSSIANS):
-                if k == 0:
-                    components.append(GaussianComponent(
-                        mean=float(px_val),
-                        variance=var_init,
-                        weight=1.0,
-                    ))
-                else:
-                    components.append(GaussianComponent(
-                        mean=0.0,
-                        variance=var_init,
-                        weight=0.0,
-                    ))
-            self._gmm.append(components)
+    def _score(self, confirmed_tracks: list[Track]) -> float:
+        """Motion score in [0, 100] from confirmed track areas."""
+        if not confirmed_tracks:
+            return 0.0
+        frame_area = self._width * self._height
+        if frame_area <= 0:
+            return 0.0
+        total_area = sum(t.area for t in confirmed_tracks)
+        fg_pct = (total_area / frame_area) * 100.0
+        denom = max(self._area_thresh_pct, SCORE_AREA_THRESH_FLOOR)
+        raw = (fg_pct / denom) * SCORE_MULTIPLIER
+        return min(raw, SCORE_MAX)
 
-    def _gmm_update(self, gray: list[int]) -> list[int]:
-        """Update GMM model and return foreground mask (0=bg, 1=fg)."""
-        n = len(gray)
-        fg_mask = [0] * n
-        lr = self._profile.get("learning_rate", GMM_LEARNING_RATE)
-        var_thresh = self._profile.get("var_thresh", GMM_VAR_THRESH)
-        bg_ratio = GMM_BACKGROUND_RATIO
-        sigma_init = self._profile.get("noise_sigma", GMM_NOISE_SIGMA)
+    # ── Auto lighting mode ───────────────────────────────────────────────
 
-        for i in range(n):
-            x = float(gray[i])
-            components = self._gmm[i]
-            matched = False
-
-            # Try to match against existing gaussians
-            for g in components:
-                if g.weight < 1e-6:
-                    continue
-                std = math.sqrt(max(g.variance, 1.0))
-                if abs(x - g.mean) < var_thresh * std:
-                    # Match — update
-                    g.weight = (1.0 - lr) * g.weight + lr
-                    rho = lr / max(g.weight, 1e-6)
-                    g.mean = (1.0 - rho) * g.mean + rho * x
-                    diff = x - g.mean
-                    g.variance = (1.0 - rho) * g.variance + rho * diff * diff
-                    g.variance = max(g.variance, 1.0)  # floor
-                    matched = True
-                    break
-                else:
-                    g.weight = (1.0 - lr) * g.weight
-
-            if not matched:
-                # Replace weakest gaussian
-                weakest_idx = min(range(GMM_NUM_GAUSSIANS),
-                                  key=lambda k: components[k].weight)
-                components[weakest_idx] = GaussianComponent(
-                    mean=x,
-                    variance=sigma_init * sigma_init,
-                    weight=GMM_WEIGHT_INIT,
-                )
-
-            # Normalize weights
-            total_w = sum(g.weight for g in components)
-            if total_w > 0:
-                for g in components:
-                    g.weight /= total_w
-
-            # Classify: background or foreground?
-            # Sort by weight/sqrt(variance) descending
-            sorted_comps = sorted(
-                components,
-                key=lambda g: g.weight / math.sqrt(max(g.variance, 1.0)),
-                reverse=True,
-            )
-            cumulative = 0.0
-            is_bg = False
-            for g in sorted_comps:
-                cumulative += g.weight
-                std = math.sqrt(max(g.variance, 1.0))
-                if abs(x - g.mean) < var_thresh * std:
-                    is_bg = True
-                    break
-                if cumulative > bg_ratio:
-                    break
-
-            fg_mask[i] = 0 if is_bg else 1
-
-        return fg_mask
-
-    # ── Morphological cleanup ────────────────────────────────────────────
-
-    def _morph_cleanup(self, mask: list[int]) -> list[int]:
-        """Erode then dilate to remove noise and reconnect regions."""
-        w, h = self._width, self._height
-        # Erode
-        eroded = self._morph_op(mask, w, h, MORPH_ERODE_SIZE, op="erode")
-        # Dilate
-        dilated = self._morph_op(eroded, w, h, MORPH_DILATE_SIZE, op="dilate")
-        return dilated
-
-    @staticmethod
-    def _morph_op(mask: list[int], w: int, h: int, ksize: int, op: str) -> list[int]:
-        """Simple morphological operation (erode or dilate)."""
-        out = list(mask)
-        r = ksize // 2
-        for y in range(h):
-            for x in range(w):
-                if op == "erode":
-                    # Erode: output 1 only if ALL neighbors are 1
-                    val = 1
-                    for dy in range(-r, r + 1):
-                        for dx in range(-r, r + 1):
-                            ny, nx = y + dy, x + dx
-                            if 0 <= ny < h and 0 <= nx < w:
-                                if mask[ny * w + nx] == 0:
-                                    val = 0
-                                    break
-                            else:
-                                val = 0
-                                break
-                        if val == 0:
-                            break
-                    out[y * w + x] = val
-                else:
-                    # Dilate: output 1 if ANY neighbor is 1
-                    val = 0
-                    for dy in range(-r, r + 1):
-                        for dx in range(-r, r + 1):
-                            ny, nx = y + dy, x + dx
-                            if 0 <= ny < h and 0 <= nx < w:
-                                if mask[ny * w + nx] == 1:
-                                    val = 1
-                                    break
-                        if val == 1:
-                            break
-                    out[y * w + x] = val
-        return out
-
-    # ── Blob detection ───────────────────────────────────────────────────
-
-    def _detect_blobs(self, mask: list[int]) -> list[TrackedBlob]:
-        """Connected component labeling via flood-fill."""
-        w, h = self._width, self._height
-        visited = [False] * (w * h)
-        blobs: list[TrackedBlob] = []
-        min_area = self._profile.get("min_blob_area", MIN_BLOB_AREA_PX)
-        edge_margin = int(max(w, h) * EDGE_MARGIN_PCT / 100)
-
-        for y in range(h):
-            for x in range(w):
-                idx = y * w + x
-                if mask[idx] == 0 or visited[idx]:
-                    continue
-
-                # Flood-fill to find connected component
-                stack = [(x, y)]
-                pixels = []
-                while stack:
-                    px, py = stack.pop()
-                    pidx = py * w + px
-                    if visited[pidx]:
-                        continue
-                    visited[pidx] = True
-                    if mask[pidx] == 0:
-                        continue
-                    pixels.append((px, py))
-                    # 4-connected neighbors
-                    for dx, dy in [(1, 0), (-1, 0), (0, 1), (0, -1)]:
-                        nx, ny = px + dx, py + dy
-                        if 0 <= nx < w and 0 <= ny < h and not visited[ny * w + nx]:
-                            stack.append((nx, ny))
-
-                area = len(pixels)
-                if area < min_area:
-                    continue
-
-                # Compute centroid
-                cx = sum(p[0] for p in pixels) / area
-                cy = sum(p[1] for p in pixels) / area
-
-                # Edge filter: reject if centroid is near border
-                if (cx < edge_margin or cx > w - edge_margin
-                        or cy < edge_margin or cy > h - edge_margin):
-                    continue
-
-                blobs.append(TrackedBlob(cx=cx, cy=cy, area=area))
-
-        return blobs
-
-    # ── Dust/insect filter ───────────────────────────────────────────────
-
-    def _filter_dust(self, blobs: list[TrackedBlob]) -> list[TrackedBlob]:
-        """Filter out dust/insect blobs (small, near top of frame)."""
-        ir_zone_y = self._height * DUST_IR_ZONE_TOP_PCT / 100
-        return [
-            b for b in blobs
-            if not (b.area < DUST_MAX_AREA_PX and b.cy < ir_zone_y)
-        ]
-
-    # ── Trajectory tracker ───────────────────────────────────────────────
-
-    def _update_tracks(self, blobs: list[TrackedBlob]) -> list[TrackedBlob]:
-        """Match current blobs to tracked blobs, return confirmed ones."""
-        matched_tracks = set()
-        matched_blobs = set()
-
-        # Match existing tracks to current blobs by nearest centroid
-        for ti, track in enumerate(self._tracks):
-            best_dist = TRAJECTORY_SEARCH_RADIUS_PX ** 2
-            best_bi = -1
-            for bi, blob in enumerate(blobs):
-                if bi in matched_blobs:
-                    continue
-                dist = (track.cx - blob.cx) ** 2 + (track.cy - blob.cy) ** 2
-                if dist < best_dist:
-                    best_dist = dist
-                    best_bi = bi
-
-            if best_bi >= 0:
-                # Update track with matched blob
-                b = blobs[best_bi]
-                track.cx = b.cx
-                track.cy = b.cy
-                track.area = b.area
-                track.frames_seen += 1
-                track.frames_missing = 0
-                matched_tracks.add(ti)
-                matched_blobs.add(best_bi)
-
-        # Increment missing count for unmatched tracks
-        for ti, track in enumerate(self._tracks):
-            if ti not in matched_tracks:
-                track.frames_missing += 1
-
-        # Remove stale tracks
-        self._tracks = [
-            t for t in self._tracks
-            if t.frames_missing <= TRAJECTORY_MAX_GAP_FRAMES
-        ]
-
-        # Start new tracks for unmatched blobs
-        for bi, blob in enumerate(blobs):
-            if bi not in matched_blobs:
-                blob.id = self._next_track_id
-                self._next_track_id += 1
-                blob.frames_seen = 1
-                self._tracks.append(blob)
-
-        # Return confirmed tracks
-        return [t for t in self._tracks if t.confirmed]
-
-    # ── Auto lighting detection ──────────────────────────────────────────
-
-    def _auto_detect_lighting(self, gray: list[int]):
-        """Auto-detect lighting mode from frame brightness."""
+    def _auto_detect_lighting(self, gray: list[int]) -> None:
         if not gray:
             return
-        ## Brightness threshold for night detection.
-        NIGHT_BRIGHTNESS_THRESHOLD = 50
-        mean_brightness = sum(gray) / len(gray)
-        if mean_brightness < NIGHT_BRIGHTNESS_THRESHOLD:
-            self._profile = PROFILES.get("night_ir", PROFILES["day"])
-        else:
-            self._profile = PROFILES["day"]
+        brightness = sum(gray) / len(gray)
+        new_name = "night_ir" if brightness < AUTO_NIGHT_BRIGHTNESS_THRESHOLD else "day"
+        if PROFILES.get(new_name) is not self._profile_dict:
+            self._profile_dict = PROFILES[new_name]
+            self._profile = GMMProfile.from_dict(self._profile_dict)
+            if self._gmm is not None:
+                self._gmm.set_profile(self._profile)
 
-    # ── Legacy frame-diff fallback (during warmup) ───────────────────────
+    # ── Dust / insect filter ─────────────────────────────────────────────
+
+    def _filter_dust(self, blobs: list[Blob]) -> list[Blob]:
+        ir_zone_y = self._height * DUST_IR_ZONE_TOP_PCT / 100.0
+        kept: list[Blob] = []
+        for b in blobs:
+            is_dust = (b.area < DUST_MAX_AREA_PX) and (b.cy < ir_zone_y)
+            if not is_dust:
+                kept.append(b)
+        return kept
+
+    # ── Legacy frame-diff fallback (used during warm-up) ─────────────────
 
     def _legacy_score(self, gray: list[int]) -> float:
-        """Simple frame differencing (used during GMM warmup)."""
         prev = self._prev_gray
         if prev is None or len(prev) != len(gray):
             return 0.0
         return self._compute_score(prev, gray)
 
     def _compute_score(self, prev: list[int], curr: list[int]) -> float:
-        """Compute percentage of pixels changed above threshold (legacy API)."""
+        """Percentage of pixels changed by more than `pixel_diff`."""
         total = len(prev)
         if total == 0:
             return 0.0
-        changed = sum(1 for p, c in zip(prev, curr)
-                      if abs(p - c) > self.pixel_diff)
+        thresh = self.pixel_diff
+        changed = 0
+        for p, c in zip(prev, curr):
+            if abs(p - c) > thresh:
+                changed += 1
         return (changed / total) * 100.0
 
     # ── Image decoding ───────────────────────────────────────────────────
 
     @staticmethod
     def _to_grayscale(jpeg_bytes: bytes) -> list[int] | None:
-        """Decode JPEG to flat grayscale pixel list (downsampled)."""
+        """Decode JPEG -> downsampled grayscale list. None on failure.
+
+        Pillow is used directly (already a project dependency per
+        requirements.txt). Returns None on empty input, missing PIL, or
+        any decode failure.
+        """
+        if not jpeg_bytes:
+            return None
         try:
             from PIL import Image
             import io
             img = Image.open(io.BytesIO(jpeg_bytes))
+            img.load()
             ratio = WORK_WIDTH / max(img.width, 1)
             new_h = max(int(img.height * ratio), 1)
             img = img.resize((WORK_WIDTH, new_h), Image.NEAREST)
@@ -578,18 +425,21 @@ class MotionDetector:
             return None
 
     def _to_grayscale_sized(self, jpeg_bytes: bytes) -> list[int] | None:
-        """Decode JPEG and update width/height state."""
-        gray = self._to_grayscale(jpeg_bytes)
-        if gray is None:
+        """Decode + update `_width`/`_height`."""
+        if not jpeg_bytes:
             return None
         try:
             from PIL import Image
             import io
             img = Image.open(io.BytesIO(jpeg_bytes))
+            img.load()
             ratio = WORK_WIDTH / max(img.width, 1)
             new_h = max(int(img.height * ratio), 1)
+            resized = img.resize((WORK_WIDTH, new_h), Image.NEAREST).convert("L")
             self._width = WORK_WIDTH
             self._height = new_h
+            return list(resized.getdata())
+        except ImportError:
+            return None
         except Exception:
-            pass
-        return gray
+            return None

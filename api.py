@@ -15,6 +15,10 @@ Endpoints:
   GET  /topics/{name}   — latest data for a topic
   GET  /config/{key}    — read a config value (dot notation)
   POST /config/{key}    — set a config value (dot notation)
+  GET  /fleet/robots    — list all registered robots + aggregated status
+  POST /fleet/command   — {"id": "bot_1", "pkt_type": 128, "payload_hex": ".."}
+  POST /fleet/broadcast — {"pkt_type": 128, "payload_hex": "..", "type": 0}
+  GET  /dashboard[/...] — static dashboard files (B02)
 
 Usage:
     api = APIServer(brain, port=8080)
@@ -23,11 +27,88 @@ Usage:
 
 import asyncio
 import json
+import os
 import time
 from typing import Optional, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from server import BrainServer
+
+
+# ── Dashboard static files ────────────────────────────────────────────────────
+# B02 Fleet Dashboard: vanilla HTML/JS/CSS served from ./dashboard/.
+
+DASHBOARD_DIR_NAME = "dashboard"
+DASHBOARD_ROUTE_PREFIX = "/dashboard"
+DASHBOARD_INDEX_FILE = "index.html"
+
+# Content-type mapping for static files served under /dashboard.
+_STATIC_MIME_TYPES = {
+    ".html": "text/html; charset=utf-8",
+    ".js":   "application/javascript; charset=utf-8",
+    ".css":  "text/css; charset=utf-8",
+    ".json": "application/json",
+    ".svg":  "image/svg+xml",
+    ".png":  "image/png",
+    ".jpg":  "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".ico":  "image/x-icon",
+    ".txt":  "text/plain; charset=utf-8",
+}
+_DEFAULT_STATIC_MIME = "application/octet-stream"
+
+# Absolute path to the dashboard directory (resolved once at import time).
+DASHBOARD_ROOT = os.path.abspath(
+    os.path.join(os.path.dirname(__file__), DASHBOARD_DIR_NAME)
+)
+
+
+def _guess_content_type(path: str) -> str:
+    """Return a content-type header value for a static file path."""
+    _, ext = os.path.splitext(path)
+    return _STATIC_MIME_TYPES.get(ext.lower(), _DEFAULT_STATIC_MIME)
+
+
+def _resolve_dashboard_path(url_path: str) -> Optional[str]:
+    """Translate a /dashboard[/...] URL to an absolute file path.
+
+    Returns the absolute path if it is a readable file inside DASHBOARD_ROOT,
+    or None if the path is missing / escapes the dashboard root / is a dir.
+    Index file is served for the bare /dashboard prefix.
+    """
+    if not url_path.startswith(DASHBOARD_ROUTE_PREFIX):
+        return None
+
+    rel = url_path[len(DASHBOARD_ROUTE_PREFIX):]
+    if rel in ("", "/"):
+        rel = "/" + DASHBOARD_INDEX_FILE
+    # Strip leading slash before joining so os.path.join doesn't reset root.
+    rel = rel.lstrip("/")
+
+    candidate = os.path.abspath(os.path.join(DASHBOARD_ROOT, rel))
+
+    # Guard against path traversal: must stay inside DASHBOARD_ROOT.
+    if os.path.commonpath([candidate, DASHBOARD_ROOT]) != DASHBOARD_ROOT:
+        return None
+    if not os.path.isfile(candidate):
+        return None
+    return candidate
+
+
+def _serve_static(writer: asyncio.StreamWriter, file_path: str) -> None:
+    """Write a 200 response with the file body and appropriate content-type."""
+    with open(file_path, "rb") as f:
+        payload = f.read()
+    ctype = _guess_content_type(file_path)
+    header = (
+        f"HTTP/1.1 200 OK\r\n"
+        f"Content-Type: {ctype}\r\n"
+        f"Content-Length: {len(payload)}\r\n"
+        f"Cache-Control: no-cache\r\n"
+        f"Connection: close\r\n"
+        f"\r\n"
+    ).encode()
+    writer.write(header + payload)
 
 
 # ── HTTP helpers ──────────────────────────────────────────────────────────────
@@ -87,16 +168,53 @@ def _parse_request(raw: bytes) -> tuple[str, str, dict, bytes]:
 class APIServer:
     """Async HTTP API server."""
 
-    def __init__(self, brain: "BrainServer", port: int = 8080):
-        self.brain  = brain
-        self.port   = port
-        self._start = time.time()
+    # ── Authentication ────────────────────────────────────────────────────
+    # The HTTP API was designed for a single-user hobby + private LAN. To
+    # avoid trivial tampering on a less-trusted network, accept an API key
+    # from either:
+    #   - env var `ROBOT_BRAIN_API_KEY`
+    #   - constructor `api_key=` argument (e.g. from server.yaml)
+    # When set, every request that isn't on `_PUBLIC_ROUTES` must include a
+    # matching `Authorization: Bearer <key>` header. When unset (the
+    # default), the API stays open as before — explicit opt-in.
+
+    #: Routes that are reachable without auth (health checks, dashboard).
+    _PUBLIC_ROUTES = {"/health", "/", ""}
+
+    def __init__(self, brain: "BrainServer", port: int = 8080,
+                 api_key: Optional[str] = None):
+        self.brain   = brain
+        self.port    = port
+        self._start  = time.time()
+        # Env wins over constructor arg so deployment can override config.
+        self.api_key = os.environ.get("ROBOT_BRAIN_API_KEY") or api_key or None
 
     async def run(self):
         server = await asyncio.start_server(self._handle, "0.0.0.0", self.port)
-        print(f"[API] Listening on port {self.port}")
+        if self.api_key:
+            print(f"[API] Listening on port {self.port} (auth: API key required)")
+        else:
+            print(f"[API] Listening on port {self.port} "
+                  "(WARNING: no API key set — set ROBOT_BRAIN_API_KEY)")
         async with server:
             await server.serve_forever()
+
+    def _is_authorised(self, path: str, headers: dict) -> bool:
+        """Authorise a request: public routes always pass; everything else
+        must carry a matching bearer token if `api_key` is configured."""
+        if self.api_key is None:
+            return True  # explicit opt-out
+        # Strip query string + trailing slash for the public-route check.
+        bare = path.split("?")[0].rstrip("/") or "/"
+        if bare in self._PUBLIC_ROUTES or bare.startswith(DASHBOARD_ROUTE_PREFIX):
+            return True
+        auth = headers.get("authorization", "")
+        if not auth.lower().startswith("bearer "):
+            return False
+        provided = auth[7:].strip()
+        # Constant-time comparison to avoid timing-attack key recovery.
+        import hmac
+        return hmac.compare_digest(provided, self.api_key)
 
     async def _handle(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
         try:
@@ -104,6 +222,9 @@ class APIServer:
             method, path, headers, body = _parse_request(raw)
             if not method:
                 _response(writer, 400, {"error": "bad request"})
+                return
+            if not self._is_authorised(path, headers):
+                _response(writer, 401, {"error": "unauthorised"})
                 return
             await self._route(method, path, body, writer)
         except asyncio.TimeoutError:
@@ -121,6 +242,17 @@ class APIServer:
 
         # ── GET routes ─────────────────────────────────────────────────────────
         if method == "GET":
+            # Dashboard static files — handled before the normal routes so
+            # that /dashboard/app.js etc. don't fall through to 404.
+            if path == DASHBOARD_ROUTE_PREFIX or path.startswith(
+                    DASHBOARD_ROUTE_PREFIX + "/"):
+                file_path = _resolve_dashboard_path(path)
+                if file_path is None:
+                    _response(writer, 404, {"error": "dashboard file not found"})
+                else:
+                    _serve_static(writer, file_path)
+                return
+
             if path in ("/health", ""):
                 _response(writer, 200, {
                     "status": "ok",
@@ -138,6 +270,8 @@ class APIServer:
             elif path.startswith("/config/"):
                 key = path[len("/config/"):]
                 _response(writer, 200, self._config_get(key))
+            elif path == "/fleet/robots":
+                _response(writer, 200, self._fleet_status())
             else:
                 _response(writer, 404, {"error": "not found"})
 
@@ -188,6 +322,14 @@ class APIServer:
             elif path.startswith("/config/"):
                 key = path[len("/config/"):]
                 _response(writer, 200, self._config_set(key, payload))
+
+            elif path == "/fleet/command":
+                result, http_status = await self._fleet_command(payload)
+                _response(writer, http_status, result)
+
+            elif path == "/fleet/broadcast":
+                result, http_status = await self._fleet_broadcast(payload)
+                _response(writer, http_status, result)
 
             else:
                 _response(writer, 404, {"error": "not found"})
@@ -304,6 +446,91 @@ class APIServer:
         elif topic_name == "status":
             return self._full_status()
         return {"error": f"unknown topic: {topic_name}"}
+
+    # ── Fleet endpoints ───────────────────────────────────────────────────────
+
+    # HTTP status codes — no magic numbers in route handlers
+    HTTP_OK = 200
+    HTTP_BAD_REQUEST = 400
+    HTTP_NOT_FOUND = 404
+    HTTP_SERVICE_UNAVAILABLE = 503
+
+    # Field names accepted by fleet POST bodies
+    FLEET_FIELD_ID = "id"
+    FLEET_FIELD_PKT_TYPE = "pkt_type"
+    FLEET_FIELD_PAYLOAD_HEX = "payload_hex"
+    FLEET_FIELD_ROBOT_TYPE = "type"
+
+    def _fleet_manager(self):
+        """Return the brain's FleetManager or None."""
+        return getattr(self.brain, "fleet_manager", None)
+
+    def _fleet_status(self) -> dict:
+        fm = self._fleet_manager()
+        if fm is None:
+            return {"error": "fleet manager not enabled"}
+        # Run timeout sweep before serving status so data is fresh.
+        fm.check_timeouts()
+        return fm.get_fleet_status()
+
+    @staticmethod
+    def _decode_payload_hex(payload_hex: str) -> bytes:
+        """Decode hex payload. Accepts empty string as empty bytes."""
+        if not payload_hex:
+            return b""
+        return bytes.fromhex(payload_hex)
+
+    async def _fleet_command(self, body: dict) -> tuple[dict, int]:
+        fm = self._fleet_manager()
+        if fm is None:
+            return {"error": "fleet manager not enabled"}, self.HTTP_SERVICE_UNAVAILABLE
+
+        robot_id = body.get(self.FLEET_FIELD_ID, "")
+        pkt_type = body.get(self.FLEET_FIELD_PKT_TYPE)
+        payload_hex = body.get(self.FLEET_FIELD_PAYLOAD_HEX, "")
+
+        if not robot_id:
+            return {"error": f"missing '{self.FLEET_FIELD_ID}' field"}, self.HTTP_BAD_REQUEST
+        if pkt_type is None:
+            return {"error": f"missing '{self.FLEET_FIELD_PKT_TYPE}' field"}, self.HTTP_BAD_REQUEST
+        try:
+            payload = self._decode_payload_hex(payload_hex)
+        except ValueError:
+            return {"error": "invalid hex in 'payload_hex'"}, self.HTTP_BAD_REQUEST
+
+        ok = await fm.send_targeted(robot_id, int(pkt_type), payload)
+        return {
+            "id":        robot_id,
+            "pkt_type":  int(pkt_type),
+            "delivered": ok,
+        }, self.HTTP_OK if ok else self.HTTP_NOT_FOUND
+
+    async def _fleet_broadcast(self, body: dict) -> tuple[dict, int]:
+        fm = self._fleet_manager()
+        if fm is None:
+            return {"error": "fleet manager not enabled"}, self.HTTP_SERVICE_UNAVAILABLE
+
+        pkt_type = body.get(self.FLEET_FIELD_PKT_TYPE)
+        payload_hex = body.get(self.FLEET_FIELD_PAYLOAD_HEX, "")
+        robot_type = body.get(self.FLEET_FIELD_ROBOT_TYPE)
+
+        if pkt_type is None:
+            return {"error": f"missing '{self.FLEET_FIELD_PKT_TYPE}' field"}, self.HTTP_BAD_REQUEST
+        try:
+            payload = self._decode_payload_hex(payload_hex)
+        except ValueError:
+            return {"error": "invalid hex in 'payload_hex'"}, self.HTTP_BAD_REQUEST
+
+        results = await fm.broadcast(
+            int(pkt_type), payload,
+            robot_type=int(robot_type) if robot_type is not None else None,
+        )
+        return {
+            "pkt_type":  int(pkt_type),
+            "delivered": sum(1 for ok in results.values() if ok),
+            "attempted": len(results),
+            "results":   results,
+        }, self.HTTP_OK
 
     # ── Config read/write ─────────────────────────────────────────────────────
 

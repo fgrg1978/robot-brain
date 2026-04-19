@@ -1,72 +1,154 @@
 # Robot Brain
 
-Python brain server for autonomous robots. Runs on macOS with [LM Studio](https://lmstudio.ai/) (VLM + LLM), communicates with a bare-metal RISC-V kernel ([robot-os](https://github.com/fgrg1978/robot-os)) via custom binary protocol over TCP.
+Python brain server for autonomous robots. Pairs with [`robot-os`](https://github.com/fgrg1978/robot-os) — a bare-metal RISC-V Rust kernel — to deliver the full perception → planning → actuation loop for an autonomous ground / air robot.
 
-## How it works
+Runs on macOS/Linux hosts with [LM Studio](https://lmstudio.ai/) (VLM + LLM) locally, communicating with the robot over TCP (WiFi) or UART (ESP32 bridge) using a compact binary protocol.
+
+## Why this exists
+
+Commercial robotic stacks (ROS 2, PX4 ground stations, fleet dashboards) are
+either too heavy for a single-person hobby project or lock you into a specific
+hardware ecosystem. This repo is the counter-proposal:
+
+- **All-in-one brain for small fleets** — VLM, LLM, fleet manager, MAVLink
+  bridge, motion detection, SITL, web dashboard, REST API, Telegram bot — in a
+  single ~15k-line Python server with no external services required.
+- **Latency you can measure** — the companion kernel keeps the safety/control
+  loop under 10 µs; the brain handles cognition (perception / planning) that
+  doesn't need hard real-time.
+- **Works offline** — the robot has its own autonomy layer (`E05`); the brain
+  can cache VLM/LLM responses and serve canned fallbacks when LM Studio is
+  unreachable.
+- **Hackable end-to-end** — every module is 200-800 lines, no magic, `pytest`
+  covers the core.
+
+## Architecture
 
 ```
-Robot (VisionFive 2) ──sensors/camera──> Brain Server ──> VLM ──> LLM ──> Policy
-                      <──actuator cmds──                                    │
-                                                                    skill/action
+                 ┌───────────────┐
+    IP cameras ──┤ RTSP monitor  │ (motion-triggered VLM dispatch)
+                 │  (GMM + blob) │
+                 └───────┬───────┘
+                         │
+        ┌────────────────▼─────────────────┐
+        │       Brain Server (this repo)   │
+        │  ┌────────────┐  ┌────────────┐  │
+        │  │ Perception │→│  Planner    │  │
+        │  │   (VLM)    │  │ (LLM+skill)│  │
+        │  └────────────┘  └────────────┘  │
+        │        │               │          │
+        │  ┌─────▼───────┐ ┌─────▼────────┐ │
+        │  │  Policy     │ │  Executor    │ │
+        │  │ (per robot) │ │ (skill run)  │ │
+        │  └─────────────┘ └──────────────┘ │
+        │           Fleet / API / UI        │
+        └─────────────────┬─────────────────┘
+                          │   binary TCP / UART
+                    ┌─────▼──────┐
+                    │  robot-os  │ ←→ sensors / actuators
+                    │  (kernel)  │
+                    └────────────┘
 ```
 
-The robot sends sensor data and camera frames. The brain sees through a VLM (SmolVLM), decides with an LLM (Llama 3.2), translates decisions into motor commands, and sends them back. Safety checks are always active.
+## What's included
 
-## What's here
+### Core server
+- **server.py** — TCP listener, packet dispatch, safety enforcement, connection registry
+- **protocol.py** — Binary protocol (`BR` magic + type + payload + CRC8), packet types synced with `robot-os`
+- **api.py** — HTTP REST API (asyncio, no framework): `/status`, `/mode`, `/fleet/*`, `/dashboard`, `/ota/*`
 
-- **server.py** — TCP listener, packet dispatch, safety enforcement
-- **protocol.py** — Binary protocol (`BR` magic + type + payload + CRC8), shared with robot-os
-- **perception/** — VLM interface (LM Studio API)
-- **planner/** — LLM decisions, behavior modes, skill catalog, task decomposer
-- **policy/** — Translate skills to motor commands (wheeled, drone, humanoid, ackermann)
-- **policy/safety.py** — Per-robot-type safety profiles
-- **executor/** — Async skill runner (plan to sequential execution)
-- **tools/sitl/** — Software-in-the-loop simulator (2D physics, raycasting camera)
+### Perception
+- **perception/vision.py** — VLM via LM Studio (SmolVLM)
+- **perception/motion_detect.py** — GMM background model (B04), blob tracker, day/night/IR profiles
+- **perception/rtsp_monitor.py** — Multi-IP-camera monitor with motion-triggered VLM
+- **perception/surround_view.py** — Bird's-eye-view fusion from 4 cameras (homography blend)
+
+### Planning & policy
+- **planner/decide.py** — LLM single-action decision (reactive mode)
+- **planner/modes.py** — ModeManager (idle / patrol / investigate / charge)
+- **planner/skills.py** — Skill catalogue per robot type
+- **planner/task_planner.py** — Free-text → JSON skill plan decomposer
+- **planner/mapper.py** — Perimeter waypoint mapping
+- **planner/fleet.py** — Fleet-level planner (zone dispatch)
+- **policy/{wheeled,drone,humanoid,ackermann}.py** — Skill → actuator translation per type
+- **policy/safety.py** — Brain-side safety validation
+
+### Fleet & deployment
+- **fleet.py** — FleetManager (registry, heartbeat, broadcast, targeted commands, REST endpoints)
+- **dashboard/** — Vanilla JS web UI (no frameworks), served at `/dashboard`
+- **mavlink_client.py** — MAVLink v1 bridge to PX4/ArduPilot SITL (pure Python, no pymavlink required)
+- **transport.py** — Multi-link client (WiFi/LoRa/RF) with priority failover + failback
+
+### Extras
+- **sitl.py** — Multi-type Software-In-The-Loop (wheeled/drone/ackermann/humanoid) with scenarios
+- **offline_cache.py** — LRU + TTL cache for VLM/LLM with JSON persistence + canned fallbacks
+- **executor/skill_runner.py** — Async state-machine for plan execution
 - **notifications.py** — Pushover / Telegram / Email / Webhook alerts
-- **api.py** — HTTP REST API
 - **telegram_bot.py** — Remote control via Telegram
+- **tools/sitl/** — Standalone 2D-physics wheeled SITL with raycast camera
 
-## Sensors
+## State (2026-04)
 
-The robot supports a full sensor suite via the kernel's driver layer:
+All master-plan phases implemented:
+- V / X / Y (modes, skills, task planner, notifications, telegram, API, multi-robot)
+- E03 (GPS missions + geofence), E04 (payload abstraction)
+- E07 (fleet management), E08 (MAVLink bridge)
+- B01 (SITL multi-type), B02 (fleet dashboard), B03 (offline cache), B04 (GMM motion)
+- Full multi-link transport client (E02 brain side)
 
-- **Vision** — RPi Camera (CSI MIPI) fed to SmolVLM for scene understanding
-- **IMU** — MPU6050 (I2C) for tilt safety and heading
-- **Rangefinders** — HC-SR04 ultrasonic (front), laser rangefinder (precise distance)
-- **ADC** — ADS1115 16-bit 4-channel (I2C) for battery voltage and analog inputs
-- **Digital sensors** — PIR (motion detection), IR (proximity/line following), sound sensor
-- **Encoders** — Wheel encoders (GPIO interrupt) for odometry and PID feedback
-- **Buzzer** — Passive piezo (PWM) for audio alerts and status tones
+**Tests**: 1115/1115 passing (pytest).
 
-See `docs/SHOPPING_LIST.md` for the full hardware BOM, wiring diagram, and sensor integration map.
+Companion kernel (`robot-os`) implements all core phases (safety, FS, tracing,
+secure boot, UEFI scaffolding, COW fork, demand paging, userspace driver
+framework). End-to-end smoke passes: kernel boots in QEMU + brain listens +
+TCP pipe established.
 
-## What's pending
+## Hardware
 
-- **Phase T** — Real CSI camera streaming from kernel
-- **Phase Z** — Multi-link transport (WiFi/LoRa/RF/4G)
-- **Phase AA** — GPS missions + geofencing
-- **Phase AB** — Payload abstraction (spray/gripper/PTO)
-- **Phase AC** — Offline autonomy (no brain server)
-- **Phase AD** — Logging, replay, analytics
-- **Phase AE** — Fleet management
-- **Phase AF** — MAVLink bridge
-- **Phases AH-AN** — Drone-critical (EKF, SITL/HITL, 3D path, motor mixing, terrain, SLAM, CI)
+Three build tiers (indoor / tracked-outdoor / production) documented in:
+- **docs/SHOPPING_LIST.md** — BOM + wiring diagram + sensor map (3 tiers, 17-480 EUR)
+- **docs/HARDWARE_BUILD.md** — step-by-step assembly + first-boot + troubleshooting
+
+Target robots (hardware arriving July 2026):
+- **Tier 1 (~17 €)** — 4WD indoor dev chassis with encoders + MPU6050
+- **Tier 2 (~330 €)** — Tracked chassis + LiDAR LD19 + 3S LiPo + IP54 enclosure
+- **Tier 3 (+36 €)** — Siren, spotlight, pan/tilt camera, INA219, speaker, LoRa
 
 ## Quick start
 
+Install:
 ```bash
+python3.12 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-# Edit config.yaml (robot type, LM Studio endpoint)
-python server.py
-# Or run the simulator:
-python tools/sitl/sitl_wheeled.py
+```
+
+Run:
+```bash
+# Edit config.yaml (robot type, LM Studio endpoint, ports)
+python -m server
+```
+
+Standalone SITL (no hardware required):
+```bash
+python sitl.py --type wheeled --scenario forward_10m
+```
+
+End-to-end test against the kernel in QEMU:
+```bash
+# From robot-os repo
+./tools/test_e2e_auto.sh
 ```
 
 ## Tests
 
 ```bash
-python -m pytest tests/ -v    # 138 tests
+python3.12 -m pytest tests/              # 1115 tests
+python3.12 -m pytest tests/test_protocol.py  # just the kernel protocol sync tests
 ```
+
+## Companion repo
+
+- **[robot-os](../robot-os)** — RISC-V Rust kernel (this brain's pair)
 
 ## License
 

@@ -323,7 +323,7 @@ async def _capture_ffmpeg(url: str) -> bytes | None:
 
 def cameras_from_config(config: dict) -> list[RtspCamera]:
     """Parse rtsp_cameras section from config.yaml into RtspCamera list."""
-    raw = config.get("rtsp_cameras", [])
+    raw = config.get("rtsp_cameras") or []
     cameras = []
     for entry in raw:
         cameras.append(RtspCamera(

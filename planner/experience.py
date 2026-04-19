@@ -105,6 +105,11 @@ class ExperienceStore:
         self._robot_type = robot_type
         self._file_path = os.path.join(base_dir, f"{robot_type}.jsonl")
         self._cache: list[ExperienceRecord] = []
+        # Parallel cache of pre-computed keyword sets per record. Built
+        # once at load and updated on every record/cap/clear so query()
+        # doesn't have to re-extract keywords for every record on every
+        # call (was O(K*N) per query for K candidates × N records).
+        self._kw_cache: list[set[str]] = []
         self._dirty = False
         self._load()
 
@@ -130,6 +135,7 @@ class ExperienceStore:
             tags=tags,
         )
         self._cache.append(rec)
+        self._kw_cache.append(set(rec.tags) | _extract_keywords(rec.task))
         self._enforce_cap()
         self._append_to_disk(rec)
         logger.info("[Experience] Recorded: %s → %s (%d/%d steps)",
@@ -144,8 +150,12 @@ class ExperienceStore:
             return []
 
         scored: list[ExperienceHit] = []
-        for rec in self._cache:
-            rec_kw = set(rec.tags) | _extract_keywords(rec.task)
+        # Iterate in lock-step with the keyword cache built at record/load
+        # time. Falls back to recomputing if the cache is somehow out of
+        # sync (defensive).
+        for i, rec in enumerate(self._cache):
+            rec_kw = self._kw_cache[i] if i < len(self._kw_cache) \
+                else (set(rec.tags) | _extract_keywords(rec.task))
             score = _keyword_similarity(query_kw, rec_kw)
             if score >= MIN_SIMILARITY_SCORE:
                 scored.append(ExperienceHit(record=rec, score=score))
@@ -188,6 +198,7 @@ class ExperienceStore:
         self._robot_type = robot_type
         self._file_path = os.path.join(self._base_dir, f"{robot_type}.jsonl")
         self._cache = []
+        self._kw_cache = []
         self._load()
 
     def success_rate(self, task_keywords: str = "") -> float:
@@ -217,7 +228,11 @@ class ExperienceStore:
                     if not line:
                         continue
                     raw = json.loads(line)
-                    self._cache.append(ExperienceRecord(**raw))
+                    rec = ExperienceRecord(**raw)
+                    self._cache.append(rec)
+                    # Pre-compute keyword set in lock-step so query()
+                    # doesn't have to recompute on every call.
+                    self._kw_cache.append(set(rec.tags) | _extract_keywords(rec.task))
             logger.info("[Experience] Loaded %d records for %s",
                         len(self._cache), self._robot_type)
         except Exception as e:
@@ -238,6 +253,7 @@ class ExperienceStore:
         if len(self._cache) > MAX_RECORDS:
             excess = len(self._cache) - MAX_RECORDS
             self._cache = self._cache[excess:]
+            self._kw_cache = self._kw_cache[excess:]
             self._rewrite_disk()
 
     def _rewrite_disk(self):
