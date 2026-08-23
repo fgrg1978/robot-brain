@@ -8,9 +8,14 @@ import time
 import pytest
 
 from planner.alert import (
-    AlertPipeline, AlertEvent,
-    ALERT_COOLDOWN_S, EVIDENCE_FRAMES, EVIDENCE_RETENTION_DAYS,
-    BUZZER_BEEP, BUZZER_SIREN, BUZZER_OFF,
+    AlertPipeline,
+    AlertEvent,
+    ALERT_COOLDOWN_S,
+    EVIDENCE_FRAMES,
+    EVIDENCE_RETENTION_DAYS,
+    BUZZER_BEEP,
+    BUZZER_SIREN,
+    BUZZER_OFF,
 )
 from protocol import ConfigCmd, CONFIG_CMD, BUZZER_CONFIG_KEY
 
@@ -27,8 +32,9 @@ class TestAlertPipeline:
 
         class MockNotifier:
             async def alert(self, message, title="", image=None):
-                notifications.append({"message": message, "title": title,
-                                       "has_image": image is not None})
+                notifications.append(
+                    {"message": message, "title": title, "has_image": image is not None}
+                )
                 return {"mock": True}
 
         tmpdir = tempfile.mkdtemp()
@@ -45,14 +51,16 @@ class TestAlertPipeline:
         p, packets, notifs, _ = self._make_pipeline()
         writer = object()
 
-        event = asyncio.run(p.raise_alert(
-            trigger_label="pir_motion",
-            detection_label="person",
-            vlm_description="A person near the door",
-            image_data=b"\xff\xd8\xff\xe0test",
-            writer=writer,
-            actions=["notify", "alert"],
-        ))
+        event = asyncio.run(
+            p.raise_alert(
+                trigger_label="pir_motion",
+                detection_label="person",
+                vlm_description="A person near the door",
+                image_data=b"\xff\xd8\xff\xe0test",
+                writer=writer,
+                actions=["notify", "alert"],
+            )
+        )
 
         assert event is not None
         assert event.trigger_label == "pir_motion"
@@ -65,13 +73,15 @@ class TestAlertPipeline:
         p, packets, _, _ = self._make_pipeline()
         writer = object()
 
-        asyncio.run(p.raise_alert(
-            trigger_label="pir_motion",
-            detection_label="person",
-            vlm_description="test",
-            writer=writer,
-            actions=["buzzer_alert"],
-        ))
+        asyncio.run(
+            p.raise_alert(
+                trigger_label="pir_motion",
+                detection_label="person",
+                vlm_description="test",
+                writer=writer,
+                actions=["buzzer_alert"],
+            )
+        )
 
         # should have sent buzzer beep
         buzzer_pkts = [pk for pk in packets if pk[1] == BUZZER_CONFIG_KEY]
@@ -82,13 +92,15 @@ class TestAlertPipeline:
         p, packets, _, _ = self._make_pipeline()
         writer = object()
 
-        asyncio.run(p.raise_alert(
-            trigger_label="pir_motion",
-            detection_label="person",
-            vlm_description="test",
-            writer=writer,
-            actions=["notify"],  # no buzzer action
-        ))
+        asyncio.run(
+            p.raise_alert(
+                trigger_label="pir_motion",
+                detection_label="person",
+                vlm_description="test",
+                writer=writer,
+                actions=["notify"],  # no buzzer action
+            )
+        )
 
         buzzer_pkts = [pk for pk in packets if pk[1] == BUZZER_CONFIG_KEY]
         assert len(buzzer_pkts) == 0
@@ -97,60 +109,70 @@ class TestAlertPipeline:
         p, _, _, _ = self._make_pipeline(cooldown_s=10.0)
         writer = object()
 
-        e1 = asyncio.run(p.raise_alert(
-            trigger_label="pir_motion",
-            detection_label="person",
-            vlm_description="test",
-            writer=writer,
-            actions=[],
-        ))
+        e1 = asyncio.run(
+            p.raise_alert(
+                trigger_label="pir_motion",
+                detection_label="person",
+                vlm_description="test",
+                writer=writer,
+                actions=[],
+            )
+        )
         assert e1 is not None
 
         # same trigger+detection should be cooled down
-        e2 = asyncio.run(p.raise_alert(
-            trigger_label="pir_motion",
-            detection_label="person",
-            vlm_description="test again",
-            writer=writer,
-            actions=[],
-        ))
+        e2 = asyncio.run(
+            p.raise_alert(
+                trigger_label="pir_motion",
+                detection_label="person",
+                vlm_description="test again",
+                writer=writer,
+                actions=[],
+            )
+        )
         assert e2 is None
 
     def test_cooldown_allows_different_label(self):
         p, _, _, _ = self._make_pipeline(cooldown_s=10.0)
         writer = object()
 
-        e1 = asyncio.run(p.raise_alert(
-            trigger_label="pir_motion",
-            detection_label="person",
-            vlm_description="test",
-            writer=writer,
-            actions=[],
-        ))
+        e1 = asyncio.run(
+            p.raise_alert(
+                trigger_label="pir_motion",
+                detection_label="person",
+                vlm_description="test",
+                writer=writer,
+                actions=[],
+            )
+        )
         assert e1 is not None
 
         # different detection label should not be cooled down
-        e2 = asyncio.run(p.raise_alert(
-            trigger_label="pir_motion",
-            detection_label="fire",
-            vlm_description="fire detected",
-            writer=writer,
-            actions=[],
-        ))
+        e2 = asyncio.run(
+            p.raise_alert(
+                trigger_label="pir_motion",
+                detection_label="fire",
+                vlm_description="fire detected",
+                writer=writer,
+                actions=[],
+            )
+        )
         assert e2 is not None
 
     def test_evidence_saves_frame(self):
         p, _, _, tmpdir = self._make_pipeline()
         writer = object()
 
-        event = asyncio.run(p.raise_alert(
-            trigger_label="sound_event",
-            detection_label="glass_break",
-            vlm_description="broken glass",
-            image_data=b"\xff\xd8\xff\xe0jpeg_data",
-            writer=writer,
-            actions=[],
-        ))
+        event = asyncio.run(
+            p.raise_alert(
+                trigger_label="sound_event",
+                detection_label="glass_break",
+                vlm_description="broken glass",
+                image_data=b"\xff\xd8\xff\xe0jpeg_data",
+                writer=writer,
+                actions=[],
+            )
+        )
 
         assert event.frames_saved == 1
         assert event.evidence_dir != ""
@@ -172,14 +194,16 @@ class TestAlertPipeline:
         p, _, _, tmpdir = self._make_pipeline(evidence_frames=3)
         writer = object()
 
-        asyncio.run(p.raise_alert(
-            trigger_label="pir",
-            detection_label="person",
-            vlm_description="test",
-            image_data=b"\xff\xd8frame1",
-            writer=writer,
-            actions=[],
-        ))
+        asyncio.run(
+            p.raise_alert(
+                trigger_label="pir",
+                detection_label="person",
+                vlm_description="test",
+                image_data=b"\xff\xd8frame1",
+                writer=writer,
+                actions=[],
+            )
+        )
 
         # save additional frames
         asyncio.run(p.save_evidence_frame(b"\xff\xd8frame2"))
@@ -195,14 +219,16 @@ class TestAlertPipeline:
         p, _, _, _ = self._make_pipeline()
         writer = object()
 
-        asyncio.run(p.raise_alert(
-            trigger_label="pir",
-            detection_label="person",
-            vlm_description="test",
-            image_data=b"\xff\xd8data",
-            writer=writer,
-            actions=[],
-        ))
+        asyncio.run(
+            p.raise_alert(
+                trigger_label="pir",
+                detection_label="person",
+                vlm_description="test",
+                image_data=b"\xff\xd8data",
+                writer=writer,
+                actions=[],
+            )
+        )
 
         assert p.active_evidence is not None
         p.finish_evidence()
@@ -212,13 +238,15 @@ class TestAlertPipeline:
         p, _, _, _ = self._make_pipeline()
         writer = object()
 
-        event = asyncio.run(p.raise_alert(
-            trigger_label="ir",
-            detection_label="proximity",
-            vlm_description="test",
-            writer=writer,
-            actions=[],
-        ))
+        event = asyncio.run(
+            p.raise_alert(
+                trigger_label="ir",
+                detection_label="proximity",
+                vlm_description="test",
+                writer=writer,
+                actions=[],
+            )
+        )
 
         assert event.frames_saved == 0
         assert event.evidence_dir == ""
@@ -227,14 +255,16 @@ class TestAlertPipeline:
         p, _, notifs, _ = self._make_pipeline()
         writer = object()
 
-        asyncio.run(p.raise_alert(
-            trigger_label="pir",
-            detection_label="person",
-            vlm_description="Person at door",
-            image_data=b"\xff\xd8photo",
-            writer=writer,
-            actions=["notify"],
-        ))
+        asyncio.run(
+            p.raise_alert(
+                trigger_label="pir",
+                detection_label="person",
+                vlm_description="Person at door",
+                image_data=b"\xff\xd8photo",
+                writer=writer,
+                actions=["notify"],
+            )
+        )
 
         assert len(notifs) == 1
         assert "PERSON" in notifs[0]["message"]
@@ -244,13 +274,15 @@ class TestAlertPipeline:
         p, _, notifs, _ = self._make_pipeline()
         writer = object()
 
-        asyncio.run(p.raise_alert(
-            trigger_label="pir",
-            detection_label="person",
-            vlm_description="test",
-            writer=writer,
-            actions=["alert"],  # no notify
-        ))
+        asyncio.run(
+            p.raise_alert(
+                trigger_label="pir",
+                detection_label="person",
+                vlm_description="test",
+                writer=writer,
+                actions=["alert"],  # no notify
+            )
+        )
 
         assert len(notifs) == 0
 
@@ -260,22 +292,26 @@ class TestAlertPipeline:
 
         assert p.alert_count == 0
 
-        asyncio.run(p.raise_alert(
-            trigger_label="pir",
-            detection_label="person",
-            vlm_description="test 1",
-            writer=writer,
-            actions=[],
-        ))
+        asyncio.run(
+            p.raise_alert(
+                trigger_label="pir",
+                detection_label="person",
+                vlm_description="test 1",
+                writer=writer,
+                actions=[],
+            )
+        )
         assert p.alert_count == 1
 
-        asyncio.run(p.raise_alert(
-            trigger_label="sound",
-            detection_label="fire",
-            vlm_description="test 2",
-            writer=writer,
-            actions=[],
-        ))
+        asyncio.run(
+            p.raise_alert(
+                trigger_label="sound",
+                detection_label="fire",
+                vlm_description="test 2",
+                writer=writer,
+                actions=[],
+            )
+        )
         assert p.alert_count == 2
 
     def test_alerts_list_returns_copy(self):
@@ -311,14 +347,16 @@ class TestAlertPipeline:
     def test_repr_recording(self):
         p, _, _, _ = self._make_pipeline()
         writer = object()
-        asyncio.run(p.raise_alert(
-            trigger_label="pir",
-            detection_label="person",
-            vlm_description="test",
-            image_data=b"\xff\xd8data",
-            writer=writer,
-            actions=[],
-        ))
+        asyncio.run(
+            p.raise_alert(
+                trigger_label="pir",
+                detection_label="person",
+                vlm_description="test",
+                image_data=b"\xff\xd8data",
+                writer=writer,
+                actions=[],
+            )
+        )
         r = repr(p)
         assert "recording" in r
 
@@ -355,13 +393,19 @@ class TestSensorFlagsProtocol:
 
     def test_sensor_packet_with_flags(self):
         from protocol import SensorPacket, SENSOR_FLAG_PIR, SENSOR_FLAG_SOUND, SENSOR_FLAG_IR
+
         flags = SENSOR_FLAG_PIR | SENSOR_FLAG_SOUND
         pkt = SensorPacket(
-            timestamp_ms=1000, battery_mv=7400,
-            accel_mg=(0, 0, 1000), gyro_mdps=(0, 0, 0),
-            odom_dist_mm=0, odom_hdg_cdeg=0,
-            encoder_l=0, encoder_r=0,
-            range_front_mm=500, range_right_mm=300,
+            timestamp_ms=1000,
+            battery_mv=7400,
+            accel_mg=(0, 0, 1000),
+            gyro_mdps=(0, 0, 0),
+            odom_dist_mm=0,
+            odom_hdg_cdeg=0,
+            encoder_l=0,
+            encoder_r=0,
+            range_front_mm=500,
+            range_right_mm=300,
             sensor_flags=flags,
         )
         data = pkt.to_bytes()
@@ -375,6 +419,7 @@ class TestSensorFlagsProtocol:
         """Legacy 62-byte packet should parse with sensor_flags=0."""
         from protocol import SensorPacket
         import struct
+
         # Build a legacy packet (no flags field)
         hdr = struct.pack("<Q3i3iH", 1000, 0, 0, 1000, 0, 0, 0, 7400)
         whl = struct.pack("<2i2q2H", 0, 0, 0, 0, 500, 300)
@@ -385,12 +430,18 @@ class TestSensorFlagsProtocol:
 
     def test_sensor_packet_with_flags_roundtrip(self):
         from protocol import SensorPacket, SENSOR_FLAG_IR
+
         pkt = SensorPacket(
-            timestamp_ms=2000, battery_mv=7200,
-            accel_mg=(100, -50, 980), gyro_mdps=(10, 20, 30),
-            odom_dist_mm=1000, odom_hdg_cdeg=9000,
-            encoder_l=500, encoder_r=500,
-            range_front_mm=200, range_right_mm=400,
+            timestamp_ms=2000,
+            battery_mv=7200,
+            accel_mg=(100, -50, 980),
+            gyro_mdps=(10, 20, 30),
+            odom_dist_mm=1000,
+            odom_hdg_cdeg=9000,
+            encoder_l=500,
+            encoder_r=500,
+            range_front_mm=200,
+            range_right_mm=400,
             sensor_flags=SENSOR_FLAG_IR,
         )
         data = pkt.to_bytes()

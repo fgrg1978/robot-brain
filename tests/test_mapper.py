@@ -8,8 +8,10 @@ import pytest
 from perception.slam import OccupancyGrid, SLAM
 from planner.path import PathPlanner
 from planner.mapper import (
-    PerimeterMapper, Waypoint,
-    WAYPOINT_INTERVAL_MM, LOOP_CLOSURE_THRESHOLD_MM,
+    PerimeterMapper,
+    Waypoint,
+    WAYPOINT_INTERVAL_MM,
+    LOOP_CLOSURE_THRESHOLD_MM,
     MIN_MAPPING_DISTANCE_MM,
 )
 

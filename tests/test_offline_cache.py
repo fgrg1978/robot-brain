@@ -21,8 +21,8 @@ from offline_cache import (  # noqa: E402
     OFFLINE_CACHE_KEY_HEX_LEN,
 )
 
-
 # ── Constants / smoke ────────────────────────────────────────────────────────
+
 
 def test_constants_are_positive():
     assert OFFLINE_CACHE_MAX_ENTRIES > 0
@@ -38,6 +38,7 @@ def test_fallback_catalog_has_defaults():
 
 
 # ── Keys ─────────────────────────────────────────────────────────────────────
+
 
 def test_make_key_deterministic():
     k1 = ModelCache.make_key("vlm", "hello")
@@ -74,6 +75,7 @@ def test_hash_bytes_stable():
 
 
 # ── Put / Get ────────────────────────────────────────────────────────────────
+
 
 @pytest.fixture
 def cache(tmp_path):
@@ -130,6 +132,7 @@ def test_put_refreshes_existing(cache):
 
 # ── TTL / expiration ─────────────────────────────────────────────────────────
 
+
 def test_ttl_expiration(tmp_path):
     c = ModelCache(path=str(tmp_path / "c.json"), max_entries=4, ttl_s=0.05)
     k = c.remember("llm", "p", "X")
@@ -150,6 +153,7 @@ def test_purge_expired(tmp_path):
 
 
 # ── LRU eviction ─────────────────────────────────────────────────────────────
+
 
 def test_lru_eviction(tmp_path):
     c = ModelCache(path=str(tmp_path / "c.json"), max_entries=3, ttl_s=60.0)
@@ -176,21 +180,21 @@ def test_eviction_count_tracks_overflow(tmp_path):
 
 # ── Stats ────────────────────────────────────────────────────────────────────
 
+
 def test_hit_rate_zero_when_empty(cache):
     assert cache.stats().hit_rate() == 0.0
 
 
 def test_hit_rate_basic(cache):
     k = cache.remember("llm", "p", "X")
-    cache.get(k)           # hit
-    cache.get("missing")   # miss
+    cache.get(k)  # hit
+    cache.get("missing")  # miss
     assert abs(cache.stats().hit_rate() - 0.5) < 1e-6
 
 
 def test_stats_as_dict(cache):
     d = cache.stats().as_dict()
-    for key in ("hits", "misses", "evictions", "expirations",
-                "fallbacks", "writes", "hit_rate"):
+    for key in ("hits", "misses", "evictions", "expirations", "fallbacks", "writes", "hit_rate"):
         assert key in d
 
 
@@ -203,6 +207,7 @@ def test_reset_stats(cache):
 
 
 # ── Fallback responses ───────────────────────────────────────────────────────
+
 
 def test_fallback_known_classification(cache):
     resp = cache.fallback("llm", classification="obstacle")
@@ -232,6 +237,7 @@ def test_fallback_vlm_unknown_is_conservative(cache):
 
 
 # ── Decorator ────────────────────────────────────────────────────────────────
+
 
 def test_cached_decorator_returns_cached_value(cache):
     calls = {"n": 0}
@@ -287,6 +293,7 @@ def test_cached_decorator_serialises_non_str(cache):
 
 
 # ── Persistence ──────────────────────────────────────────────────────────────
+
 
 def test_save_and_reload(tmp_path):
     path = str(tmp_path / "cache.json")
@@ -356,6 +363,7 @@ def test_close_persists(tmp_path):
 
 
 # ── Validation ───────────────────────────────────────────────────────────────
+
 
 def test_invalid_max_entries_raises():
     with pytest.raises(ValueError):

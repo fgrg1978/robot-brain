@@ -33,36 +33,39 @@ logger = logging.getLogger("brain.experience")
 # ---------------------------------------------------------------------------
 
 EXPERIENCE_DIR_DEFAULT = "data/experience"
-QUERY_TOP_K = 3                    # default number of past experiences to retrieve
-MAX_RECORDS = 5_000                # cap per robot type (FIFO eviction)
-MIN_SIMILARITY_SCORE = 0.15        # ignore records below this relevance
+QUERY_TOP_K = 3  # default number of past experiences to retrieve
+MAX_RECORDS = 5_000  # cap per robot type (FIFO eviction)
+MIN_SIMILARITY_SCORE = 0.15  # ignore records below this relevance
 
 
 # ---------------------------------------------------------------------------
 # Types
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class ExperienceRecord:
     """One plan-execution cycle."""
+
     timestamp: float
-    task: str                       # original free-text task
-    context: str                    # sensor/env context at planning time
-    plan: list[dict]                # [{"skill": ..., "args": ...}, ...]
-    outcome: str                    # "done" | "interrupted" | "error"
-    steps_total: int                # len(plan)
-    steps_executed: int             # how many actually ran
-    error: str = ""                 # error message if outcome == "error"
-    interrupt_reason: str = ""      # reason if outcome == "interrupted"
-    duration_s: float = 0.0        # wall-clock time for execution
+    task: str  # original free-text task
+    context: str  # sensor/env context at planning time
+    plan: list[dict]  # [{"skill": ..., "args": ...}, ...]
+    outcome: str  # "done" | "interrupted" | "error"
+    steps_total: int  # len(plan)
+    steps_executed: int  # how many actually ran
+    error: str = ""  # error message if outcome == "error"
+    interrupt_reason: str = ""  # reason if outcome == "interrupted"
+    duration_s: float = 0.0  # wall-clock time for execution
     tags: list[str] = field(default_factory=list)  # auto-extracted keywords
 
 
 @dataclass
 class ExperienceHit:
     """A retrieved experience with relevance score."""
+
     record: ExperienceRecord
-    score: float                    # 0.0 – 1.0
+    score: float  # 0.0 – 1.0
 
 
 # ---------------------------------------------------------------------------
@@ -70,11 +73,40 @@ class ExperienceHit:
 # ---------------------------------------------------------------------------
 
 # Common stop words to ignore during keyword matching
-_STOP_WORDS = frozenset({
-    "the", "a", "an", "and", "or", "but", "in", "on", "at", "to", "for",
-    "of", "with", "by", "is", "it", "that", "this", "be", "as", "do",
-    "all", "any", "no", "not", "so", "if", "up", "out", "from",
-})
+_STOP_WORDS = frozenset(
+    {
+        "the",
+        "a",
+        "an",
+        "and",
+        "or",
+        "but",
+        "in",
+        "on",
+        "at",
+        "to",
+        "for",
+        "of",
+        "with",
+        "by",
+        "is",
+        "it",
+        "that",
+        "this",
+        "be",
+        "as",
+        "do",
+        "all",
+        "any",
+        "no",
+        "not",
+        "so",
+        "if",
+        "up",
+        "out",
+        "from",
+    }
+)
 
 
 def _extract_keywords(text: str) -> set[str]:
@@ -96,11 +128,11 @@ def _keyword_similarity(query_kw: set[str], record_kw: set[str]) -> float:
 # ExperienceStore
 # ---------------------------------------------------------------------------
 
+
 class ExperienceStore:
     """Persistent store of plan-execution outcomes."""
 
-    def __init__(self, base_dir: str = EXPERIENCE_DIR_DEFAULT,
-                 robot_type: str = "wheeled"):
+    def __init__(self, base_dir: str = EXPERIENCE_DIR_DEFAULT, robot_type: str = "wheeled"):
         self._base_dir = base_dir
         self._robot_type = robot_type
         self._file_path = os.path.join(base_dir, f"{robot_type}.jsonl")
@@ -115,10 +147,18 @@ class ExperienceStore:
 
     # ── Public API ─────────────────────────────────────────────────────────
 
-    def record(self, task: str, plan: list[dict], outcome: str, *,
-               context: str = "", steps_executed: int = 0,
-               error: str = "", interrupt_reason: str = "",
-               duration_s: float = 0.0) -> ExperienceRecord:
+    def record(
+        self,
+        task: str,
+        plan: list[dict],
+        outcome: str,
+        *,
+        context: str = "",
+        steps_executed: int = 0,
+        error: str = "",
+        interrupt_reason: str = "",
+        duration_s: float = 0.0,
+    ) -> ExperienceRecord:
         """Record a completed plan execution."""
         tags = sorted(_extract_keywords(task) | _extract_keywords(context))
         rec = ExperienceRecord(
@@ -138,12 +178,16 @@ class ExperienceStore:
         self._kw_cache.append(set(rec.tags) | _extract_keywords(rec.task))
         self._enforce_cap()
         self._append_to_disk(rec)
-        logger.info("[Experience] Recorded: %s → %s (%d/%d steps)",
-                    task[:60], outcome, steps_executed, len(plan))
+        logger.info(
+            "[Experience] Recorded: %s → %s (%d/%d steps)",
+            task[:60],
+            outcome,
+            steps_executed,
+            len(plan),
+        )
         return rec
 
-    def query(self, task: str, context: str = "",
-              k: int = QUERY_TOP_K) -> list[ExperienceHit]:
+    def query(self, task: str, context: str = "", k: int = QUERY_TOP_K) -> list[ExperienceHit]:
         """Find the K most relevant past experiences for a task."""
         query_kw = _extract_keywords(task) | _extract_keywords(context)
         if not query_kw:
@@ -154,8 +198,11 @@ class ExperienceStore:
         # time. Falls back to recomputing if the cache is somehow out of
         # sync (defensive).
         for i, rec in enumerate(self._cache):
-            rec_kw = self._kw_cache[i] if i < len(self._kw_cache) \
+            rec_kw = (
+                self._kw_cache[i]
+                if i < len(self._kw_cache)
                 else (set(rec.tags) | _extract_keywords(rec.task))
+            )
             score = _keyword_similarity(query_kw, rec_kw)
             if score >= MIN_SIMILARITY_SCORE:
                 scored.append(ExperienceHit(record=rec, score=score))
@@ -178,7 +225,7 @@ class ExperienceStore:
             if r.interrupt_reason:
                 outcome_str += f" ({r.interrupt_reason})"
             lines.append(
-                f"  {i}. Task: \"{r.task}\" | Plan: {plan_summary} | "
+                f'  {i}. Task: "{r.task}" | Plan: {plan_summary} | '
                 f"Result: {outcome_str} ({r.steps_executed}/{r.steps_total} steps)"
             )
         return "\n".join(lines)
@@ -207,7 +254,8 @@ class ExperienceStore:
         if task_keywords:
             kw = _extract_keywords(task_keywords)
             records = [
-                r for r in self._cache
+                r
+                for r in self._cache
                 if _keyword_similarity(kw, set(r.tags)) >= MIN_SIMILARITY_SCORE
             ]
         if not records:
@@ -233,11 +281,9 @@ class ExperienceStore:
                     # Pre-compute keyword set in lock-step so query()
                     # doesn't have to recompute on every call.
                     self._kw_cache.append(set(rec.tags) | _extract_keywords(rec.task))
-            logger.info("[Experience] Loaded %d records for %s",
-                        len(self._cache), self._robot_type)
+            logger.info("[Experience] Loaded %d records for %s", len(self._cache), self._robot_type)
         except Exception as e:
-            logger.error("[Experience] Failed to load %s: %s",
-                         self._file_path, e)
+            logger.error("[Experience] Failed to load %s: %s", self._file_path, e)
 
     def _append_to_disk(self, rec: ExperienceRecord):
         """Append a single record to the JSONL file."""

@@ -2,13 +2,22 @@
 
 import pytest
 from planner.payload import (
-    PayloadManager, Payload, PayloadType, PayloadState,
-    MAX_PAYLOADS, CONFIG_KEY_PAYLOAD_BASE,
+    PayloadManager,
+    Payload,
+    PayloadType,
+    PayloadState,
+    MAX_PAYLOADS,
+    CONFIG_KEY_PAYLOAD_BASE,
 )
 
+
 class TestConstants:
-    def test_max_payloads(self): assert MAX_PAYLOADS > 0
-    def test_config_key_base(self): assert CONFIG_KEY_PAYLOAD_BASE > 0
+    def test_max_payloads(self):
+        assert MAX_PAYLOADS > 0
+
+    def test_config_key_base(self):
+        assert CONFIG_KEY_PAYLOAD_BASE > 0
+
 
 class TestPayloadManager:
     def test_empty(self):

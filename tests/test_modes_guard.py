@@ -2,7 +2,6 @@
 
 from planner.modes import ModeManager, ModeConfig, load_modes
 
-
 # ---------------------------------------------------------------------------
 # Guard mode config fixtures
 # ---------------------------------------------------------------------------
@@ -53,6 +52,7 @@ GUARD_CONFIG = {
 # ModeConfig fields
 # ---------------------------------------------------------------------------
 
+
 class TestModeConfigFields:
     def test_sensors_field(self):
         mc = ModeConfig(name="test", skills=[], sensors=["pir", "sound"])
@@ -86,6 +86,7 @@ class TestModeConfigFields:
 # ---------------------------------------------------------------------------
 # load_modes — guard modes
 # ---------------------------------------------------------------------------
+
 
 class TestLoadGuardModes:
     def test_all_modes_loaded(self):
@@ -174,6 +175,7 @@ class TestLoadGuardModes:
 # ---------------------------------------------------------------------------
 # ModeManager — guard mode switching
 # ---------------------------------------------------------------------------
+
 
 class TestModeManagerGuard:
     def test_default_mode(self):

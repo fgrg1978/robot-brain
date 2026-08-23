@@ -22,10 +22,10 @@ from planner.docking import (
     BATTERY_SAMPLES_FOR_DECISION,
 )
 
-
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
+
 
 class TestConstants:
     def test_battery_low_mv(self):
@@ -69,6 +69,7 @@ class TestConstants:
 # DockInfo
 # ---------------------------------------------------------------------------
 
+
 class TestDockInfo:
     def test_defaults(self):
         d = DockInfo()
@@ -87,6 +88,7 @@ class TestDockInfo:
 # ---------------------------------------------------------------------------
 # DockManager — initial state
 # ---------------------------------------------------------------------------
+
 
 class TestDockManagerInit:
     def test_initial_state_patrol(self):
@@ -115,6 +117,7 @@ class TestDockManagerInit:
 # ---------------------------------------------------------------------------
 # DockManager — battery monitoring
 # ---------------------------------------------------------------------------
+
 
 class TestDockManagerBattery:
     def _force_check(self, dm: DockManager, mv: int) -> DockState | None:
@@ -179,6 +182,7 @@ class TestDockManagerBattery:
 # ---------------------------------------------------------------------------
 # DockManager — state machine transitions
 # ---------------------------------------------------------------------------
+
 
 class TestDockManagerStateMachine:
     def test_report_arrived_at_dock(self):
@@ -251,6 +255,7 @@ class TestDockManagerStateMachine:
 # DockManager — manual commands
 # ---------------------------------------------------------------------------
 
+
 class TestDockManagerManual:
     def test_start_dock_sequence(self):
         dm = DockManager()
@@ -305,6 +310,7 @@ class TestDockManagerManual:
 # DockManager — homing timeout
 # ---------------------------------------------------------------------------
 
+
 class TestDockManagerHomingTimeout:
     def test_no_timeout_when_not_homing(self):
         dm = DockManager()
@@ -326,6 +332,7 @@ class TestDockManagerHomingTimeout:
 # ---------------------------------------------------------------------------
 # DockManager — full cycle
 # ---------------------------------------------------------------------------
+
 
 class TestDockManagerFullCycle:
     def _force_check(self, dm, mv):
@@ -376,6 +383,7 @@ class TestDockManagerFullCycle:
 # DockManager — properties
 # ---------------------------------------------------------------------------
 
+
 class TestDockManagerProperties:
     def test_is_docked_states(self):
         dm = DockManager()
@@ -385,16 +393,25 @@ class TestDockManagerProperties:
 
     def test_not_docked_states(self):
         dm = DockManager()
-        for state in [DockState.PATROL, DockState.LOW_BATTERY,
-                      DockState.NAVIGATING, DockState.HOMING,
-                      DockState.UNDOCKING, DockState.CRITICAL]:
+        for state in [
+            DockState.PATROL,
+            DockState.LOW_BATTERY,
+            DockState.NAVIGATING,
+            DockState.HOMING,
+            DockState.UNDOCKING,
+            DockState.CRITICAL,
+        ]:
             dm.state = state
             assert not dm.is_docked
 
     def test_needs_charge_states(self):
         dm = DockManager()
-        for state in [DockState.LOW_BATTERY, DockState.NAVIGATING,
-                      DockState.HOMING, DockState.CRITICAL]:
+        for state in [
+            DockState.LOW_BATTERY,
+            DockState.NAVIGATING,
+            DockState.HOMING,
+            DockState.CRITICAL,
+        ]:
             dm.state = state
             assert dm.needs_charge
 
@@ -413,6 +430,7 @@ class TestDockManagerProperties:
 # dock_from_config
 # ---------------------------------------------------------------------------
 
+
 class TestDockFromConfig:
     def test_empty_config(self):
         assert dock_from_config({}) is None
@@ -422,11 +440,13 @@ class TestDockFromConfig:
 
     def test_single_dock(self):
         config = {
-            "docks": [{
-                "id": "dock_north",
-                "waypoint": {"x_mm": 1000, "y_mm": 2000},
-                "approach_heading_cdeg": 18000,
-            }],
+            "docks": [
+                {
+                    "id": "dock_north",
+                    "waypoint": {"x_mm": 1000, "y_mm": 2000},
+                    "approach_heading_cdeg": 18000,
+                }
+            ],
         }
         dock = dock_from_config(config)
         assert dock is not None

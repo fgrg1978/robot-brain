@@ -2,6 +2,16 @@
 
 from openai import OpenAI
 
+# Request timeout (seconds) for the synchronous OpenAI client. Shared by
+# both Planner.decide() (single-action, small max_tokens) and TaskPlanner.
+# plan() (up to 512 tokens, so needs the same generous ceiling) — callers
+# invoking either from an asyncio context MUST wrap the call in
+# `await asyncio.wait_for(asyncio.to_thread(...), timeout=LLM_TIMEOUT_S)`;
+# this constructor-level timeout is the last-resort bound on the underlying
+# HTTP call itself (LM Studio hang / dead backend), not a substitute for
+# that wrapping.
+LLM_TIMEOUT_S: float = 20.0
+
 SYSTEM_PROMPT = """You are the decision-making brain of an autonomous robot.
 You receive scene descriptions from a camera and sensor data.
 You must decide the SINGLE next action.
@@ -33,6 +43,7 @@ class Planner:
         self.client = OpenAI(
             base_url=f"http://{host}:{port}/v1",
             api_key="not-needed",
+            timeout=LLM_TIMEOUT_S,
         )
         self.model = model
 
@@ -55,7 +66,7 @@ class Planner:
         # and the LLM would have no way to tell where the operator's
         # intent ends and the attacker's begins. Trim length, replace
         # newlines with spaces, drop control chars.
-        safe_task  = _sanitise_for_prompt(task,  max_len=200)
+        safe_task = _sanitise_for_prompt(task, max_len=200)
         safe_scene = _sanitise_for_prompt(scene, max_len=400)
 
         user_msg = (

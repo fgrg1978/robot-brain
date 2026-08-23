@@ -19,19 +19,21 @@ from fleet import (
     FLEET_UNSET_TIMESTAMP,
 )
 
-
 # ---------------------------------------------------------------------------
 # Helpers — mock send_fn and mock writer
 # ---------------------------------------------------------------------------
 
+
 class _MockWriter:
     """Stand-in for asyncio.StreamWriter — records nothing, always succeeds."""
+
     def __init__(self, name: str = ""):
         self.name = name
 
 
 class _CaptureSender:
     """Captures calls for later assertions."""
+
     def __init__(self):
         self.calls: list[tuple[object, int, bytes]] = []
         self.fail_for: set[object] = set()
@@ -45,6 +47,7 @@ class _CaptureSender:
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
+
 
 class TestConstants:
     def test_heartbeat_timeout_positive(self):
@@ -64,6 +67,7 @@ class TestConstants:
 # RobotRecord
 # ---------------------------------------------------------------------------
 
+
 class TestRobotRecord:
     def test_defaults(self):
         r = RobotRecord(robot_id="bot")
@@ -73,8 +77,9 @@ class TestRobotRecord:
         assert r.location == (0.0, 0.0)
 
     def test_to_dict_roundtrip_keys(self):
-        r = RobotRecord(robot_id="bot", name="N", robot_type=1,
-                        battery_mv=7200, location=(1.0, 2.0))
+        r = RobotRecord(
+            robot_id="bot", name="N", robot_type=1, battery_mv=7200, location=(1.0, 2.0)
+        )
         d = r.to_dict()
         assert d["id"] == "bot"
         assert d["type"] == 1
@@ -86,11 +91,11 @@ class TestRobotRecord:
 # Registration
 # ---------------------------------------------------------------------------
 
+
 class TestRegistration:
     def test_register_adds_robot(self):
         fm = FleetManager()
-        fm.register("r1", robot_type=0, name="R1",
-                    writer=_MockWriter("r1"))
+        fm.register("r1", robot_type=0, name="R1", writer=_MockWriter("r1"))
         assert fm.count == 1
         rec = fm.get("r1")
         assert rec is not None
@@ -147,6 +152,7 @@ class TestRegistration:
 # Heartbeat & timeout
 # ---------------------------------------------------------------------------
 
+
 class TestHeartbeat:
     def test_heartbeat_unknown_returns_false(self):
         fm = FleetManager()
@@ -200,6 +206,7 @@ class TestHeartbeat:
 # Queries
 # ---------------------------------------------------------------------------
 
+
 class TestQueries:
     def test_online_and_all(self):
         fm = FleetManager()
@@ -232,6 +239,7 @@ class TestQueries:
 # ---------------------------------------------------------------------------
 # Targeted send
 # ---------------------------------------------------------------------------
+
 
 class TestSendTargeted:
     def test_send_to_missing_returns_false(self):
@@ -276,6 +284,7 @@ class TestSendTargeted:
 # Broadcast
 # ---------------------------------------------------------------------------
 
+
 class TestBroadcast:
     def test_broadcast_all_online(self):
         sender = _CaptureSender()
@@ -301,7 +310,7 @@ class TestBroadcast:
         sender = _CaptureSender()
         fm = FleetManager(send_fn=sender)
         fm.register("wheeled", writer=_MockWriter(), robot_type=0)
-        fm.register("drone",   writer=_MockWriter(), robot_type=1)
+        fm.register("drone", writer=_MockWriter(), robot_type=1)
         results = asyncio.run(fm.broadcast(0x81, b"", robot_type=1))
         assert list(results.keys()) == ["drone"]
 
@@ -312,7 +321,7 @@ class TestBroadcast:
         sender.fail_for.add(w_bad)
         fm = FleetManager(send_fn=sender)
         fm.register("bad", writer=w_bad)
-        fm.register("ok",  writer=w_ok)
+        fm.register("ok", writer=w_ok)
         results = asyncio.run(fm.broadcast(0x81, b""))
         assert results["bad"] is False
         assert results["ok"] is True
@@ -333,6 +342,7 @@ class TestBroadcast:
 # ---------------------------------------------------------------------------
 # Integration-lite: inject send_fn after construction
 # ---------------------------------------------------------------------------
+
 
 class TestInjectSendFn:
     def test_set_send_fn_after_init(self):

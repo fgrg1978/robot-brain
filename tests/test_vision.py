@@ -33,6 +33,7 @@ class TestVisionPerceptionDescribe:
 
     def test_describe_has_context_param(self):
         import inspect
+
         sig = inspect.signature(VisionPerception.describe)
         params = list(sig.parameters.keys())
         assert "image_bytes" in params

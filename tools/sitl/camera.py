@@ -26,23 +26,23 @@ except ImportError:
 
 # ── Render constants ─────────────────────────────────────────────────────────
 
-IMAGE_WIDTH      = 320       # pixels
-IMAGE_HEIGHT     = 240       # pixels
-FOV_DEG          = 90        # horizontal field of view
-JPEG_QUALITY     = 60        # JPEG compression quality (lower = smaller)
-MAX_RENDER_DIST  = 5000      # mm — beyond this, just draw sky
-WALL_HEIGHT_REF  = 800       # mm — reference wall height for projection
-FOCAL_LENGTH     = IMAGE_WIDTH / (2.0 * math.tan(math.radians(FOV_DEG / 2.0)))
+IMAGE_WIDTH = 320  # pixels
+IMAGE_HEIGHT = 240  # pixels
+FOV_DEG = 90  # horizontal field of view
+JPEG_QUALITY = 60  # JPEG compression quality (lower = smaller)
+MAX_RENDER_DIST = 5000  # mm — beyond this, just draw sky
+WALL_HEIGHT_REF = 800  # mm — reference wall height for projection
+FOCAL_LENGTH = IMAGE_WIDTH / (2.0 * math.tan(math.radians(FOV_DEG / 2.0)))
 
 # Colors (RGB)
-COLOR_SKY_TOP    = (135, 180, 220)   # light blue
-COLOR_SKY_BOT    = (180, 210, 240)   # lighter near horizon
-COLOR_FLOOR_NEAR = (60, 80, 50)      # dark green
-COLOR_FLOOR_FAR  = (90, 110, 80)     # lighter green at horizon
-COLOR_WALL       = (160, 160, 160)   # gray boundary walls
-COLOR_OBSTACLE   = (140, 90, 60)     # brown obstacles
-COLOR_WALL_DARK  = (120, 120, 120)   # shadow side of wall
-COLOR_OBS_DARK   = (100, 65, 40)     # shadow side of obstacle
+COLOR_SKY_TOP = (135, 180, 220)  # light blue
+COLOR_SKY_BOT = (180, 210, 240)  # lighter near horizon
+COLOR_FLOOR_NEAR = (60, 80, 50)  # dark green
+COLOR_FLOOR_FAR = (90, 110, 80)  # lighter green at horizon
+COLOR_WALL = (160, 160, 160)  # gray boundary walls
+COLOR_OBSTACLE = (140, 90, 60)  # brown obstacles
+COLOR_WALL_DARK = (120, 120, 120)  # shadow side of wall
+COLOR_OBS_DARK = (100, 65, 40)  # shadow side of obstacle
 
 # Number of rays to cast (one per horizontal pixel column)
 NUM_RAYS = IMAGE_WIDTH
@@ -67,8 +67,7 @@ def _lerp_color(c1: tuple, c2: tuple, t: float) -> tuple:
     )
 
 
-def _shade_by_distance(base_color: tuple, dark_color: tuple,
-                        dist: float) -> tuple:
+def _shade_by_distance(base_color: tuple, dark_color: tuple, dist: float) -> tuple:
     """Darken color based on distance (fog effect)."""
     t = min(dist / MAX_RENDER_DIST, 1.0)
     # Blend toward dark variant, then toward gray fog
@@ -77,8 +76,9 @@ def _shade_by_distance(base_color: tuple, dark_color: tuple,
     return _lerp_color(c, fog, t * 0.7)
 
 
-def render_frame(robot_x: float, robot_y: float, robot_hdg_deg: float,
-                 world, obstacles_only: bool = False) -> bytes:
+def render_frame(
+    robot_x: float, robot_y: float, robot_hdg_deg: float, world, obstacles_only: bool = False
+) -> bytes:
     """Render a first-person view and return JPEG bytes.
 
     Args:
@@ -169,13 +169,13 @@ def render_frame(robot_x: float, robot_y: float, robot_hdg_deg: float,
     return buf.getvalue()
 
 
-def render_camera_payload(robot_x: float, robot_y: float,
-                          robot_hdg_deg: float, world) -> bytes:
+def render_camera_payload(robot_x: float, robot_y: float, robot_hdg_deg: float, world) -> bytes:
     """Render and return the full PKT_CAMERA payload (header + JPEG).
 
     Payload format: width(u16 LE) + height(u16 LE) + format(u8) + JPEG bytes
     """
     import struct
+
     jpeg = render_frame(robot_x, robot_y, robot_hdg_deg, world)
     header = struct.pack("<HHB", IMAGE_WIDTH, IMAGE_HEIGHT, CAMERA_FMT_JPEG)
     return header + jpeg

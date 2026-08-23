@@ -9,19 +9,20 @@ from datetime import datetime, timezone
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
-WAYPOINT_INTERVAL_MM = 1000         # record waypoint every 1 m
-LOOP_CLOSURE_THRESHOLD_MM = 500     # close loop when this close to start
+WAYPOINT_INTERVAL_MM = 1000  # record waypoint every 1 m
+LOOP_CLOSURE_THRESHOLD_MM = 500  # close loop when this close to start
 MAP_SAVE_DIR = "data"
 MAP_FILE = "map.pgm"
 PERIMETER_FILE = "perimeter.json"
-MIN_EXPLORATION_DISTANCE_MM = 300   # minimum distance to a frontier
-FRONTIER_MIN_SIZE = 3               # minimum cells for a valid frontier cluster
-MIN_MAPPING_DISTANCE_MM = 3000      # don't close loop until at least this far
+MIN_EXPLORATION_DISTANCE_MM = 300  # minimum distance to a frontier
+FRONTIER_MIN_SIZE = 3  # minimum cells for a valid frontier cluster
+MIN_MAPPING_DISTANCE_MM = 3000  # don't close loop until at least this far
 
 
 # ---------------------------------------------------------------------------
 # Waypoint
 # ---------------------------------------------------------------------------
+
 
 @dataclass
 class Waypoint:
@@ -30,14 +31,15 @@ class Waypoint:
     heading_cdeg: int
     label: str = ""
     has_rtsp_coverage: bool = False
-    zone_type: str = ""           # door, window, gate, open_area, etc.
-    zone_priority: int = 0        # 0=normal, 1+=higher priority (scanned more often)
-    last_state: str = ""          # last VLM description for change detection
+    zone_type: str = ""  # door, window, gate, open_area, etc.
+    zone_priority: int = 0  # 0=normal, 1+=higher priority (scanned more often)
+    last_state: str = ""  # last VLM description for change detection
 
 
 # ---------------------------------------------------------------------------
 # PerimeterMapper
 # ---------------------------------------------------------------------------
+
 
 class PerimeterMapper:
     """Orchestrates mapping: feeds SLAM, records waypoints, detects loop closure."""
@@ -55,17 +57,23 @@ class PerimeterMapper:
         """Begin a new mapping run."""
         pose = self._slam.get_pose()
         self._start_pose = pose
-        self.waypoints = [Waypoint(
-            x_mm=int(pose[0]), y_mm=int(pose[1]),
-            heading_cdeg=int(pose[2]), label="start",
-        )]
+        self.waypoints = [
+            Waypoint(
+                x_mm=int(pose[0]),
+                y_mm=int(pose[1]),
+                heading_cdeg=int(pose[2]),
+                label="start",
+            )
+        ]
         self._total_distance_mm = 0.0
         self._since_last_wp_mm = 0.0
         self.mapping_active = True
 
     def update(
         self,
-        odom_dx_mm: float, odom_dy_mm: float, odom_dtheta_cdeg: float,
+        odom_dx_mm: float,
+        odom_dy_mm: float,
+        odom_dtheta_cdeg: float,
         scan_points: list[tuple[int, int]],
     ) -> dict:
         """Feed odometry + scan to SLAM, track waypoints, check loop closure."""
@@ -80,15 +88,19 @@ class PerimeterMapper:
 
         if self.mapping_active and self._since_last_wp_mm >= WAYPOINT_INTERVAL_MM:
             new_wp = Waypoint(
-                x_mm=int(pose[0]), y_mm=int(pose[1]),
+                x_mm=int(pose[0]),
+                y_mm=int(pose[1]),
                 heading_cdeg=int(pose[2]),
             )
             self.waypoints.append(new_wp)
             self._since_last_wp_mm = 0.0
 
         # check loop closure
-        if (self.mapping_active and self._start_pose is not None
-                and self._total_distance_mm > MIN_MAPPING_DISTANCE_MM):
+        if (
+            self.mapping_active
+            and self._start_pose is not None
+            and self._total_distance_mm > MIN_MAPPING_DISTANCE_MM
+        ):
             dist_to_start = math.hypot(
                 pose[0] - self._start_pose[0],
                 pose[1] - self._start_pose[1],
@@ -192,7 +204,5 @@ class PerimeterMapper:
         if os.path.exists(perim_path):
             with open(perim_path) as f:
                 data = json.load(f)
-            self.waypoints = [
-                Waypoint(**wp) for wp in data.get("waypoints", [])
-            ]
+            self.waypoints = [Waypoint(**wp) for wp in data.get("waypoints", [])]
             self._total_distance_mm = data.get("total_distance_mm", 0)

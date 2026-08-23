@@ -22,12 +22,13 @@ logger = logging.getLogger("brain.payload")
 # Constants
 # ---------------------------------------------------------------------------
 MAX_PAYLOADS = 8
-CONFIG_KEY_PAYLOAD_BASE = 0x20     # CONFIG_CMD keys 0x20-0x27 for payloads
+CONFIG_KEY_PAYLOAD_BASE = 0x20  # CONFIG_CMD keys 0x20-0x27 for payloads
 
 
 # ---------------------------------------------------------------------------
 # Types
 # ---------------------------------------------------------------------------
+
 
 class PayloadType(enum.Enum):
     SPRAY = "spray"
@@ -51,7 +52,7 @@ class Payload:
     gpio_pin: int = -1
     config_key: int = 0
     state: PayloadState = PayloadState.IDLE
-    value: int = 0                 # 0-100 (duty cycle / position / intensity)
+    value: int = 0  # 0-100 (duty cycle / position / intensity)
     activated_at: float = 0.0
     total_active_s: float = 0.0
 
@@ -59,6 +60,7 @@ class Payload:
 # ---------------------------------------------------------------------------
 # PayloadManager
 # ---------------------------------------------------------------------------
+
 
 class PayloadManager:
     """Manages robot payloads (implements, tools, accessories)."""
@@ -84,8 +86,7 @@ class PayloadManager:
         )
         self._next_config_key += 1
         self._payloads[name] = p
-        logger.info("[Payload] Registered '%s' type=%s gpio=%d",
-                    name, payload_type.value, gpio_pin)
+        logger.info("[Payload] Registered '%s' type=%s gpio=%d", name, payload_type.value, gpio_pin)
         return p
 
     def unregister(self, name: str):
@@ -130,8 +131,7 @@ class PayloadManager:
         return list(self._payloads.values())
 
     def active_payloads(self) -> list[Payload]:
-        return [p for p in self._payloads.values()
-                if p.state == PayloadState.ACTIVE]
+        return [p for p in self._payloads.values() if p.state == PayloadState.ACTIVE]
 
     def deactivate_all(self):
         for name in list(self._payloads.keys()):
@@ -143,8 +143,5 @@ class PayloadManager:
         lines = []
         for p in self._payloads.values():
             state = p.state.value.upper()
-            lines.append(
-                f"  {p.name} ({p.payload_type.value}): {state} "
-                f"value={p.value}%"
-            )
+            lines.append(f"  {p.name} ({p.payload_type.value}): {state} " f"value={p.value}%")
         return "\n".join(lines)

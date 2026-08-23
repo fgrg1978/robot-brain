@@ -18,7 +18,7 @@ logger = logging.getLogger("brain.safety")
 
 # Common defaults
 DEFAULT_MIN_BATTERY_MV = 6500
-DEFAULT_MAX_TILT_CDEG = 4500            # 45 degrees in centidegrees
+DEFAULT_MAX_TILT_CDEG = 4500  # 45 degrees in centidegrees
 DEFAULT_COMMS_TIMEOUT_S = 5.0
 
 # Wheeled defaults
@@ -26,18 +26,18 @@ DEFAULT_OBSTACLE_STOP_MM = 200
 DEFAULT_MAX_SPEED_PCT = 80
 
 # Drone defaults (stricter)
-DEFAULT_DRONE_MIN_BATTERY_MV = 7000     # drones need more margin
+DEFAULT_DRONE_MIN_BATTERY_MV = 7000  # drones need more margin
 DEFAULT_DRONE_MAX_ALTITUDE_M = 50.0
 DEFAULT_DRONE_MIN_SATELLITES = 6
 DEFAULT_DRONE_MAX_WIND_MS = 10.0
 DEFAULT_DRONE_LOW_BATTERY_RTL_MV = 7000
 DEFAULT_DRONE_CRITICAL_BATTERY_LAND_MV = 6500
-DEFAULT_DRONE_MAX_TILT_CDEG = 3500      # 35 degrees — stricter than wheeled
-DEFAULT_DRONE_COMMS_TIMEOUT_S = 3.0     # shorter — drone must react fast
+DEFAULT_DRONE_MAX_TILT_CDEG = 3500  # 35 degrees — stricter than wheeled
+DEFAULT_DRONE_COMMS_TIMEOUT_S = 3.0  # shorter — drone must react fast
 
 # Humanoid defaults
 DEFAULT_MAX_JOINT_TORQUE_PCT = 70
-DEFAULT_FALL_DETECT_THRESHOLD = 4000    # IMU accel threshold (mg)
+DEFAULT_FALL_DETECT_THRESHOLD = 4000  # IMU accel threshold (mg)
 
 # Ackermann defaults
 DEFAULT_ACKERMANN_MAX_STEER_CDEG = 3500  # 35 degrees max steering angle
@@ -53,26 +53,26 @@ class SafetyProfile:
 
     # ── Common (all robot types) ─────────────────────────────────────────────
     min_battery_mv: int
-    max_tilt_cdeg: int              # IMU tilt threshold (centidegrees)
-    comms_timeout_s: float          # max time without brain contact
+    max_tilt_cdeg: int  # IMU tilt threshold (centidegrees)
+    comms_timeout_s: float  # max time without brain contact
 
     # ── Wheeled / Ackermann ──────────────────────────────────────────────────
-    obstacle_stop_mm: int           # front rangefinder threshold
-    max_speed_pct: int              # speed limiter (0-100)
+    obstacle_stop_mm: int  # front rangefinder threshold
+    max_speed_pct: int  # speed limiter (0-100)
 
     # ── Drone ────────────────────────────────────────────────────────────────
-    max_altitude_m: float           # geofence ceiling
-    min_satellites: int             # GPS fix quality for flight
-    max_wind_ms: float              # abort threshold (m/s)
-    low_battery_rtl_mv: int         # trigger Return-To-Launch
-    critical_battery_land_mv: int   # trigger immediate landing
+    max_altitude_m: float  # geofence ceiling
+    min_satellites: int  # GPS fix quality for flight
+    max_wind_ms: float  # abort threshold (m/s)
+    low_battery_rtl_mv: int  # trigger Return-To-Launch
+    critical_battery_land_mv: int  # trigger immediate landing
 
     # ── Humanoid ─────────────────────────────────────────────────────────────
-    max_joint_torque_pct: int       # torque limiter (0-100)
-    fall_detect_threshold: int      # IMU accel magnitude threshold (mg)
+    max_joint_torque_pct: int  # torque limiter (0-100)
+    fall_detect_threshold: int  # IMU accel magnitude threshold (mg)
 
     # ── Ackermann ────────────────────────────────────────────────────────────
-    max_steer_cdeg: int             # max steering angle (centidegrees)
+    max_steer_cdeg: int  # max steering angle (centidegrees)
 
     # ── Robot type this profile was created for ──────────────────────────────
     robot_type: int = ROBOT_WHEELED
@@ -123,7 +123,9 @@ class SafetyProfile:
             min_satellites=safety.get("min_satellites", DEFAULT_DRONE_MIN_SATELLITES),
             max_wind_ms=safety.get("max_wind_ms", DEFAULT_DRONE_MAX_WIND_MS),
             low_battery_rtl_mv=safety.get("low_battery_rtl_mv", DEFAULT_DRONE_LOW_BATTERY_RTL_MV),
-            critical_battery_land_mv=safety.get("critical_battery_land_mv", DEFAULT_DRONE_CRITICAL_BATTERY_LAND_MV),
+            critical_battery_land_mv=safety.get(
+                "critical_battery_land_mv", DEFAULT_DRONE_CRITICAL_BATTERY_LAND_MV
+            ),
             # Humanoid (not used)
             max_joint_torque_pct=0,
             fall_detect_threshold=0,
@@ -152,7 +154,9 @@ class SafetyProfile:
             critical_battery_land_mv=0,
             # Humanoid
             max_joint_torque_pct=safety.get("max_joint_torque_pct", DEFAULT_MAX_JOINT_TORQUE_PCT),
-            fall_detect_threshold=safety.get("fall_detect_threshold", DEFAULT_FALL_DETECT_THRESHOLD),
+            fall_detect_threshold=safety.get(
+                "fall_detect_threshold", DEFAULT_FALL_DETECT_THRESHOLD
+            ),
             # Ackermann (not used)
             max_steer_cdeg=0,
         )
@@ -205,9 +209,7 @@ class SafetyProfile:
 
         # Low battery
         if pkt.battery_mv < self.min_battery_mv:
-            violations.append(
-                f"Low battery: {pkt.battery_mv}mV < {self.min_battery_mv}mV minimum"
-            )
+            violations.append(f"Low battery: {pkt.battery_mv}mV < {self.min_battery_mv}mV minimum")
 
         # IMU tilt (if accel data available)
         if hasattr(pkt, "accel_mg") and pkt.accel_mg:
@@ -245,9 +247,7 @@ class SafetyProfile:
         if hasattr(pkt, "gps_alt_cm"):
             altitude_m = pkt.gps_alt_cm / _CM_PER_M
             if altitude_m > self.max_altitude_m:
-                violations.append(
-                    f"Altitude {altitude_m:.1f}m > {self.max_altitude_m}m ceiling"
-                )
+                violations.append(f"Altitude {altitude_m:.1f}m > {self.max_altitude_m}m ceiling")
 
         # GPS satellite count — drone should not fly without good fix
         # Note: satellite count comes via SensorCompact or extended drone packet

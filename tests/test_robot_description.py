@@ -6,13 +6,22 @@ import tempfile
 import yaml
 
 from planner.robot_description import (
-    RobotDescription, SensorDesc, ActuatorDesc, ChassisDesc, PayloadDesc,
-    MAX_SENSORS, MAX_ACTUATORS, MAX_PAYLOADS,
-    GPIO_UNSET, ADDRESS_UNSET, RESOLUTION_UNSET,
-    WHEEL_BASE_DEFAULT_MM, WHEEL_DIAMETER_DEFAULT_MM, MAX_SPEED_DEFAULT_PCT,
+    RobotDescription,
+    SensorDesc,
+    ActuatorDesc,
+    ChassisDesc,
+    PayloadDesc,
+    MAX_SENSORS,
+    MAX_ACTUATORS,
+    MAX_PAYLOADS,
+    GPIO_UNSET,
+    ADDRESS_UNSET,
+    RESOLUTION_UNSET,
+    WHEEL_BASE_DEFAULT_MM,
+    WHEEL_DIAMETER_DEFAULT_MM,
+    MAX_SPEED_DEFAULT_PCT,
     DEFAULT_ROBOT_YAML,
 )
-
 
 # ── Sample YAML data ────────────────────────────────────────────────────────
 
@@ -25,21 +34,36 @@ SAMPLE_YAML = {
         "max_speed_pct": 80,
     },
     "sensors": [
-        {"type": "imu", "model": "mpu6050", "bus": "i2c",
-         "address": 0x68, "rate_hz": 100},
-        {"type": "rangefinder", "model": "hcsr04",
-         "gpio_trig": 5, "gpio_echo": 6, "position": "front",
-         "max_range_mm": 4000},
-        {"type": "camera", "model": "ov2640", "bus": "csi",
-         "resolution": [640, 480], "fps": 15},
+        {"type": "imu", "model": "mpu6050", "bus": "i2c", "address": 0x68, "rate_hz": 100},
+        {
+            "type": "rangefinder",
+            "model": "hcsr04",
+            "gpio_trig": 5,
+            "gpio_echo": 6,
+            "position": "front",
+            "max_range_mm": 4000,
+        },
+        {"type": "camera", "model": "ov2640", "bus": "csi", "resolution": [640, 480], "fps": 15},
         {"type": "pir", "gpio": 12, "position": "front"},
         {"type": "gps", "model": "neo6m", "bus": "uart", "baud": 9600},
     ],
     "actuators": [
-        {"type": "motor", "model": "dc_brushed", "pwm_channel": 0,
-         "dir_gpio": 2, "encoder_gpio": 3, "side": "left"},
-        {"type": "motor", "model": "dc_brushed", "pwm_channel": 1,
-         "dir_gpio": 4, "encoder_gpio": 7, "side": "right"},
+        {
+            "type": "motor",
+            "model": "dc_brushed",
+            "pwm_channel": 0,
+            "dir_gpio": 2,
+            "encoder_gpio": 3,
+            "side": "left",
+        },
+        {
+            "type": "motor",
+            "model": "dc_brushed",
+            "pwm_channel": 1,
+            "dir_gpio": 4,
+            "encoder_gpio": 7,
+            "side": "right",
+        },
         {"type": "buzzer", "gpio": 8},
         {"type": "led", "gpio": 9, "count": 8},
     ],
@@ -58,6 +82,7 @@ def _write_yaml(data: dict) -> str:
 
 
 # ── from_dict tests ──────────────────────────────────────────────────────────
+
 
 class TestFromDict:
     def test_basic_fields(self):
@@ -139,6 +164,7 @@ class TestFromDict:
 
 # ── from_yaml tests ──────────────────────────────────────────────────────────
 
+
 class TestFromYaml:
     def test_load_yaml_file(self):
         path = _write_yaml(SAMPLE_YAML)
@@ -160,6 +186,7 @@ class TestFromYaml:
 
 
 # ── Query helper tests ───────────────────────────────────────────────────────
+
 
 class TestQueryHelpers:
     def test_has_sensor_true(self):
@@ -201,31 +228,26 @@ class TestQueryHelpers:
 
 # ── Limits tests ─────────────────────────────────────────────────────────────
 
+
 class TestLimits:
     def test_max_sensors_enforced(self):
-        data = {
-            "sensors": [{"type": f"sensor_{i}"} for i in range(MAX_SENSORS + 5)]
-        }
+        data = {"sensors": [{"type": f"sensor_{i}"} for i in range(MAX_SENSORS + 5)]}
         desc = RobotDescription.from_dict(data)
         assert len(desc.sensors) == MAX_SENSORS
 
     def test_max_actuators_enforced(self):
-        data = {
-            "actuators": [{"type": f"act_{i}"}
-                          for i in range(MAX_ACTUATORS + 5)]
-        }
+        data = {"actuators": [{"type": f"act_{i}"} for i in range(MAX_ACTUATORS + 5)]}
         desc = RobotDescription.from_dict(data)
         assert len(desc.actuators) == MAX_ACTUATORS
 
     def test_max_payloads_enforced(self):
-        data = {
-            "payload": [{"type": f"pay_{i}"} for i in range(MAX_PAYLOADS + 5)]
-        }
+        data = {"payload": [{"type": f"pay_{i}"} for i in range(MAX_PAYLOADS + 5)]}
         desc = RobotDescription.from_dict(data)
         assert len(desc.payloads) == MAX_PAYLOADS
 
 
 # ── Serialization tests ─────────────────────────────────────────────────────
+
 
 class TestSerialization:
     def test_roundtrip(self):
@@ -260,6 +282,7 @@ class TestSerialization:
 
 
 # ── Default values tests ────────────────────────────────────────────────────
+
 
 class TestDefaults:
     def test_default_chassis(self):

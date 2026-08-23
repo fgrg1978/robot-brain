@@ -37,10 +37,10 @@ logger = logging.getLogger("brain.meta")
 # ---------------------------------------------------------------------------
 
 HEURISTICS_DIR = "data/experience"
-MIN_RECORDS_FOR_REVIEW = 5         # don't review with less than this
-REVIEW_COOLDOWN_S = 3600           # min seconds between reviews (1 hour)
-MAX_RULES = 20                     # cap heuristic rules
-REVIEW_WINDOW = 50                 # consider last N records
+MIN_RECORDS_FOR_REVIEW = 5  # don't review with less than this
+REVIEW_COOLDOWN_S = 3600  # min seconds between reviews (1 hour)
+MAX_RULES = 20  # cap heuristic rules
+REVIEW_WINDOW = 50  # consider last N records
 
 _REVIEW_SYSTEM = """\
 You are a meta-learning agent for an autonomous {robot_type} robot.
@@ -84,9 +84,11 @@ Generate or update heuristic rules based on this evidence.
 # Types
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class HeuristicRule:
     """A single learned planning heuristic."""
+
     id: str
     rule: str
     reason: str
@@ -98,6 +100,7 @@ class HeuristicRule:
 @dataclass
 class HeuristicSet:
     """Collection of heuristic rules for a robot type."""
+
     robot_type: str
     rules: list[HeuristicRule] = field(default_factory=list)
     last_review: float = 0.0
@@ -108,12 +111,18 @@ class HeuristicSet:
 # MetaReviewer
 # ---------------------------------------------------------------------------
 
+
 class MetaReviewer:
     """LLM-powered meta-learning: reviews experience → generates heuristics."""
 
-    def __init__(self, host: str, port: int, model: str,
-                 experience: ExperienceStore,
-                 robot_type: str = "wheeled"):
+    def __init__(
+        self,
+        host: str,
+        port: int,
+        model: str,
+        experience: ExperienceStore,
+        robot_type: str = "wheeled",
+    ):
         self.client = OpenAI(
             base_url=f"http://{host}:{port}/v1",
             api_key="not-needed",
@@ -139,8 +148,7 @@ class MetaReviewer:
 
         records = self.experience._cache[-REVIEW_WINDOW:]
         if len(records) < MIN_RECORDS_FOR_REVIEW:
-            logger.info("[Meta] Not enough records (%d < %d)",
-                        len(records), MIN_RECORDS_FOR_REVIEW)
+            logger.info("[Meta] Not enough records (%d < %d)", len(records), MIN_RECORDS_FOR_REVIEW)
             return self._heuristics.rules
 
         # Format records for LLM
@@ -175,8 +183,11 @@ class MetaReviewer:
                 self._heuristics.last_review = now
                 self._heuristics.review_count += 1
                 self._save_rules()
-                logger.info("[Meta] Review #%d: %d rules generated",
-                            self._heuristics.review_count, len(new_rules))
+                logger.info(
+                    "[Meta] Review #%d: %d rules generated",
+                    self._heuristics.review_count,
+                    len(new_rules),
+                )
             else:
                 logger.warning("[Meta] Review produced no valid rules")
 
@@ -234,7 +245,7 @@ class MetaReviewer:
             if r.interrupt_reason:
                 status += f": {r.interrupt_reason}"
             lines.append(
-                f"{i}. [{status}] \"{r.task}\" → {plan_str} "
+                f'{i}. [{status}] "{r.task}" → {plan_str} '
                 f"({r.steps_executed}/{r.steps_total} steps, {r.duration_s:.1f}s)"
             )
         return "\n".join(lines)
@@ -242,6 +253,7 @@ class MetaReviewer:
     def _parse_rules(self, raw: str) -> list[HeuristicRule]:
         """Parse LLM JSON response into HeuristicRule list."""
         import re
+
         # Strip markdown fences
         raw = re.sub(r"^```[a-z]*\n?", "", raw.strip())
         raw = re.sub(r"\n?```$", "", raw.strip())
@@ -269,14 +281,16 @@ class MetaReviewer:
             rule_text = entry.get("rule", "").strip()
             if not rule_text:
                 continue
-            rules.append(HeuristicRule(
-                id=entry.get("id", f"rule_{len(rules)+1:02d}"),
-                rule=rule_text,
-                reason=entry.get("reason", ""),
-                confidence=min(1.0, max(0.0, float(entry.get("confidence", 0.5)))),
-                created=now,
-                last_reviewed=now,
-            ))
+            rules.append(
+                HeuristicRule(
+                    id=entry.get("id", f"rule_{len(rules)+1:02d}"),
+                    rule=rule_text,
+                    reason=entry.get("reason", ""),
+                    confidence=min(1.0, max(0.0, float(entry.get("confidence", 0.5)))),
+                    created=now,
+                    last_reviewed=now,
+                )
+            )
         return rules
 
     def _heuristics_path(self) -> str:
@@ -294,8 +308,9 @@ class MetaReviewer:
             self._heuristics.review_count = data.get("review_count", 0)
             for entry in data.get("rules", []):
                 self._heuristics.rules.append(HeuristicRule(**entry))
-            logger.info("[Meta] Loaded %d rules for %s",
-                        len(self._heuristics.rules), self.robot_type)
+            logger.info(
+                "[Meta] Loaded %d rules for %s", len(self._heuristics.rules), self.robot_type
+            )
         except Exception as e:
             logger.error("[Meta] Failed to load rules: %s", e)
 

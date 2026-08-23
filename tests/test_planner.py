@@ -2,17 +2,22 @@
 
 import sys
 import os
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from planner.skills import (
-    get_skills, skill_list_prompt,
-    UNIVERSAL_SKILLS, WHEELED_SKILLS, DRONE_SKILLS, HUMANOID_SKILLS,
+    get_skills,
+    skill_list_prompt,
+    UNIVERSAL_SKILLS,
+    WHEELED_SKILLS,
+    DRONE_SKILLS,
+    HUMANOID_SKILLS,
     ROBOT_SKILLS,
 )
 from planner.modes import ModeManager, load_modes
 
-
 # ── Skills ────────────────────────────────────────────────────────────────────
+
 
 def test_universal_skills_present():
     for name in ("STOP", "WAIT", "ALERT", "EMERGENCY", "SCAN_360", "NAVIGATE_TO"):
@@ -80,8 +85,9 @@ def test_skill_args_format():
     for robot_type, skills in ROBOT_SKILLS.items():
         for name, info in skills.items():
             for arg_name, spec in info["args"].items():
-                assert isinstance(spec, tuple) and len(spec) == 2, \
-                    f"{robot_type}.{name}.{arg_name}: args must be (type, description)"
+                assert (
+                    isinstance(spec, tuple) and len(spec) == 2
+                ), f"{robot_type}.{name}.{arg_name}: args must be (type, description)"
 
 
 def test_skill_example_present():

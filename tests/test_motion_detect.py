@@ -13,6 +13,7 @@ from perception.motion_detect import (
 
 try:
     from PIL import Image
+
     _HAS_PIL = True
 except ImportError:
     _HAS_PIL = False
@@ -23,6 +24,7 @@ requires_pil = pytest.mark.skipif(not _HAS_PIL, reason="Pillow not installed")
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _make_jpeg(width: int = 64, height: int = 48, fill: int = 128) -> bytes:
     """Create a minimal JPEG from a solid grayscale image."""
@@ -47,6 +49,7 @@ def _make_jpeg_gradient(width: int = 64, height: int = 48, offset: int = 0) -> b
 # Constants
 # ---------------------------------------------------------------------------
 
+
 class TestConstants:
     def test_threshold_pct_is_positive(self):
         assert MOTION_THRESHOLD_PCT > 0
@@ -64,6 +67,7 @@ class TestConstants:
 # ---------------------------------------------------------------------------
 # MotionDetector — unit tests (no PIL needed)
 # ---------------------------------------------------------------------------
+
 
 class TestMotionDetector:
     def test_init_defaults(self):
@@ -150,6 +154,7 @@ class TestMotionDetectorInternals:
 # ---------------------------------------------------------------------------
 # MotionDetector — PIL-dependent tests
 # ---------------------------------------------------------------------------
+
 
 @requires_pil
 class TestMotionDetectorWithPIL:

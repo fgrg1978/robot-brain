@@ -13,10 +13,10 @@ from perception.change_detector import (
     FALSE_POSITIVE_DECAY_S,
 )
 
-
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
+
 
 class TestConstants:
     def test_baseline_update_hours_positive(self):
@@ -32,6 +32,7 @@ class TestConstants:
 # ---------------------------------------------------------------------------
 # ChangeDetector — baselines
 # ---------------------------------------------------------------------------
+
 
 class TestBaselines:
     def test_set_baseline(self):
@@ -96,6 +97,7 @@ class TestBaselines:
 # ---------------------------------------------------------------------------
 # ChangeDetector — comparison
 # ---------------------------------------------------------------------------
+
 
 class TestComparison:
     def test_no_baseline_returns_unchanged(self):
@@ -186,6 +188,7 @@ class TestComparison:
 # ---------------------------------------------------------------------------
 # ChangeDetector — false positives
 # ---------------------------------------------------------------------------
+
 
 class TestFalsePositives:
     def test_initial_not_false_positive(self):

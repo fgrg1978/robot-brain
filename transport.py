@@ -33,7 +33,7 @@ from typing import Optional
 logger = logging.getLogger("brain.multilink")
 
 # ---------------------------------------------------------------------------
-# Tunables — NO MAGIC NUMBERS (see CLAUDE.md)
+# Tunables — NO MAGIC NUMBERS (see AGENTS.md)
 # ---------------------------------------------------------------------------
 
 #: Seconds before a silent link is considered dead.
@@ -73,12 +73,13 @@ DEFAULT_RECV_BUFSIZE: int = 4096
 @dataclass
 class LinkStats:
     """Per-adapter rolling counters."""
-    sent_bytes:       int = 0
-    recv_bytes:       int = 0
-    send_failures:    int = 0
-    consec_failures:  int = 0
-    last_recv_ts:     float = 0.0
-    last_probe_ts:    float = 0.0
+
+    sent_bytes: int = 0
+    recv_bytes: int = 0
+    send_failures: int = 0
+    consec_failures: int = 0
+    last_recv_ts: float = 0.0
+    last_probe_ts: float = 0.0
 
 
 class LinkAdapter(ABC):
@@ -97,8 +98,7 @@ class LinkAdapter(ABC):
         """Bring the link up.  Returns True on success."""
 
     @abstractmethod
-    async def disconnect(self) -> None:
-        ...
+    async def disconnect(self) -> None: ...
 
     # ── data path ──────────────────────────────────────────────────────────
 
@@ -120,16 +120,16 @@ class LinkAdapter(ABC):
         return LINK_QUALITY_GOOD if self._up else LINK_QUALITY_DOWN
 
     def mark_rx(self, nbytes: int) -> None:
-        self.stats.recv_bytes      += nbytes
-        self.stats.last_recv_ts     = time.time()
-        self.stats.consec_failures  = 0
+        self.stats.recv_bytes += nbytes
+        self.stats.last_recv_ts = time.time()
+        self.stats.consec_failures = 0
 
     def mark_send_ok(self, nbytes: int) -> None:
-        self.stats.sent_bytes      += nbytes
-        self.stats.consec_failures  = 0
+        self.stats.sent_bytes += nbytes
+        self.stats.consec_failures = 0
 
     def mark_send_fail(self) -> None:
-        self.stats.send_failures   += 1
+        self.stats.send_failures += 1
         self.stats.consec_failures += 1
 
 
@@ -141,8 +141,7 @@ class LinkAdapter(ABC):
 class WiFiAdapter(LinkAdapter):
     """Primary link: TCP over Ethernet / WiFi."""
 
-    def __init__(self, host: str, port: int,
-                 priority: int = WIFI_DEFAULT_PRIORITY):
+    def __init__(self, host: str, port: int, priority: int = WIFI_DEFAULT_PRIORITY):
         super().__init__(name=f"wifi:{host}:{port}", priority=priority)
         self._host = host
         self._port = port
@@ -150,6 +149,14 @@ class WiFiAdapter(LinkAdapter):
         self._writer: Optional[asyncio.StreamWriter] = None
 
     async def connect(self) -> bool:
+        # Close out any previous connection before replacing it — otherwise
+        # a reconnect (e.g. after failover-then-failback) leaks the old
+        # socket's fd since nothing else still holds a reference to it.
+        if self._writer is not None:
+            try:
+                self._writer.close()
+            except Exception:
+                pass
         try:
             self._reader, self._writer = await asyncio.wait_for(
                 asyncio.open_connection(self._host, self._port),
@@ -186,6 +193,11 @@ class WiFiAdapter(LinkAdapter):
         except Exception as e:
             logger.debug("[multilink] WiFi send failed: %s", e)
             self.mark_send_fail()
+            if self._writer is not None:
+                try:
+                    self._writer.close()
+                except Exception:
+                    pass
             self._up = False
             return False
 
@@ -203,6 +215,11 @@ class WiFiAdapter(LinkAdapter):
         except asyncio.TimeoutError:
             return b""
         except Exception:
+            if self._writer is not None:
+                try:
+                    self._writer.close()
+                except Exception:
+                    pass
             self._up = False
             return b""
 
@@ -219,8 +236,7 @@ class LoRaAdapter(LinkAdapter):
     LoRa modem; the framing / interface is stable.
     """
 
-    def __init__(self, port: str, baud: int = 115_200,
-                 priority: int = LORA_DEFAULT_PRIORITY):
+    def __init__(self, port: str, baud: int = 115_200, priority: int = LORA_DEFAULT_PRIORITY):
         super().__init__(name=f"lora:{port}", priority=priority)
         self._port = port
         self._baud = baud
@@ -229,6 +245,7 @@ class LoRaAdapter(LinkAdapter):
     async def connect(self) -> bool:
         try:
             import serial  # type: ignore
+
             self._serial = serial.Serial(self._port, self._baud, timeout=0)
             self._up = True
             return True
@@ -293,8 +310,7 @@ class RFAdapter(LinkAdapter):
     last-resort fallback.  Real implementation TBD once hardware lands.
     """
 
-    def __init__(self, port: str = "", baud: int = 9_600,
-                 priority: int = RF_DEFAULT_PRIORITY):
+    def __init__(self, port: str = "", baud: int = 9_600, priority: int = RF_DEFAULT_PRIORITY):
         super().__init__(name=f"rf:{port or 'stub'}", priority=priority)
         self._port = port
         self._baud = baud
@@ -307,6 +323,7 @@ class RFAdapter(LinkAdapter):
             return False
         try:
             import serial  # type: ignore
+
             self._serial = serial.Serial(self._port, self._baud, timeout=0)
             self._up = True
             return True
@@ -521,13 +538,13 @@ class MultiLinkClient:
             "active_index": self._state.active_idx,
             "links": [
                 {
-                    "name":            l.name,
-                    "priority":        l.priority,
-                    "up":              l.is_up(),
-                    "quality":         l.link_quality(),
-                    "sent_bytes":      l.stats.sent_bytes,
-                    "recv_bytes":      l.stats.recv_bytes,
-                    "send_failures":   l.stats.send_failures,
+                    "name": l.name,
+                    "priority": l.priority,
+                    "up": l.is_up(),
+                    "quality": l.link_quality(),
+                    "sent_bytes": l.stats.sent_bytes,
+                    "recv_bytes": l.stats.recv_bytes,
+                    "send_failures": l.stats.send_failures,
                     "consec_failures": l.stats.consec_failures,
                 }
                 for l in self._links

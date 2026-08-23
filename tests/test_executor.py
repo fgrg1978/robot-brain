@@ -3,6 +3,7 @@
 import asyncio
 import sys
 import os
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from protocol import ActuatorCmd, ACT_DIFF_DRIVE, FLAG_EMERGENCY
@@ -10,8 +11,8 @@ from policy.wheeled import WheeledPolicy
 from policy.drone import DronePolicy
 from executor.skill_runner import SkillRunner, RunnerState
 
-
 # ── Helpers ───────────────────────────────────────────────────────────────────
+
 
 def make_runner(policy=None):
     """Return a SkillRunner with a collecting send_cmd."""
@@ -30,6 +31,7 @@ def run(coro):
 
 
 # ── Basic execution ────────────────────────────────────────────────────────────
+
 
 def test_empty_plan_completes():
     runner, sent = make_runner()
@@ -69,10 +71,11 @@ def test_multi_step_plan():
 def test_wait_step():
     runner, sent = make_runner()
     import time
+
     t0 = time.monotonic()
     run(runner.execute_plan([{"skill": "WAIT", "args": {"seconds": 0.1}}]))
     elapsed = time.monotonic() - t0
-    assert elapsed >= 0.08   # slightly under 0.1 is ok due to OS scheduling
+    assert elapsed >= 0.08  # slightly under 0.1 is ok due to OS scheduling
 
 
 def test_emergency_sets_flag():
@@ -88,6 +91,7 @@ def test_alert_step():
 
 
 # ── Interrupt ──────────────────────────────────────────────────────────────────
+
 
 def test_interrupt_stops_plan():
     policy = WheeledPolicy()
@@ -121,11 +125,12 @@ def test_interrupt_stops_plan():
 def test_interrupt_after_plan_has_no_effect():
     runner, sent = make_runner()
     run(runner.execute_plan([{"skill": "STOP"}]))
-    runner.interrupt("late interrupt")   # should not crash
+    runner.interrupt("late interrupt")  # should not crash
     assert runner.state == RunnerState.DONE
 
 
 # ── execute_one ────────────────────────────────────────────────────────────────
+
 
 def test_execute_one_returns_cmd():
     runner, sent = make_runner()
@@ -142,9 +147,10 @@ def test_execute_one_does_not_change_plan():
 
 # ── Step duration ──────────────────────────────────────────────────────────────
 
+
 def test_turn_duration_scales_with_degrees():
     runner, _ = make_runner()
-    d90  = runner._duration("TURN_RIGHT", {"degrees": 90})
+    d90 = runner._duration("TURN_RIGHT", {"degrees": 90})
     d180 = runner._duration("TURN_RIGHT", {"degrees": 180})
     assert d180 > d90
 
@@ -168,6 +174,7 @@ def test_hover_duration_default():
 
 # ── Drone policy ───────────────────────────────────────────────────────────────
 
+
 def test_drone_runner_hover():
     runner, sent = make_runner(DronePolicy(hover_throttle=1450))
     run(runner.execute_plan([{"skill": "HOVER", "args": {"seconds": 0.05}}]))
@@ -183,6 +190,7 @@ def test_drone_runner_emergency_kills():
 
 # ── on_step_done callback ─────────────────────────────────────────────────────
 
+
 def test_on_step_done_called():
     policy = WheeledPolicy()
     done_calls = []
@@ -194,14 +202,19 @@ def test_on_step_done_called():
         done_calls.append(skill)
 
     runner = SkillRunner(policy, noop, on_step_done=on_done)
-    run(runner.execute_plan([
-        {"skill": "FORWARD", "args": {"speed": 50}},
-        {"skill": "STOP"},
-    ]))
+    run(
+        runner.execute_plan(
+            [
+                {"skill": "FORWARD", "args": {"speed": 50}},
+                {"skill": "STOP"},
+            ]
+        )
+    )
     assert done_calls == ["FORWARD", "STOP"]
 
 
 # ── Clear / reuse ─────────────────────────────────────────────────────────────
+
 
 def test_runner_reuse_after_done():
     runner, sent = make_runner()
@@ -210,7 +223,7 @@ def test_runner_reuse_after_done():
     # Re-run: clear() is called internally
     run(runner.execute_plan([{"skill": "FORWARD", "args": {"speed": 30}}]))
     assert runner.state == RunnerState.DONE
-    assert runner.steps_executed == 1   # reset on second run
+    assert runner.steps_executed == 1  # reset on second run
 
 
 if __name__ == "__main__":

@@ -15,21 +15,26 @@ from planner.zones import (
 )
 from planner.mapper import Waypoint
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _wp(x=0, y=0, label="", zone_type="", zone_priority=0):
     return Waypoint(
-        x_mm=x, y_mm=y, heading_cdeg=0,
-        label=label, zone_type=zone_type, zone_priority=zone_priority,
+        x_mm=x,
+        y_mm=y,
+        heading_cdeg=0,
+        label=label,
+        zone_type=zone_type,
+        zone_priority=zone_priority,
     )
 
 
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
+
 
 class TestConstants:
     def test_zone_types_not_empty(self):
@@ -55,6 +60,7 @@ class TestConstants:
 # ---------------------------------------------------------------------------
 # ZoneManager — tagging
 # ---------------------------------------------------------------------------
+
 
 class TestZoneManagerTagging:
     def test_tag_door(self):
@@ -126,6 +132,7 @@ class TestZoneManagerTagging:
 # ZoneManager — state change detection
 # ---------------------------------------------------------------------------
 
+
 class TestZoneManagerStateChange:
     def test_first_state_no_change(self):
         zm = ZoneManager()
@@ -196,6 +203,7 @@ class TestZoneManagerStateChange:
 # ZoneManager — scan scheduling
 # ---------------------------------------------------------------------------
 
+
 class TestZoneManagerScanning:
     def test_zone_always_scanned(self):
         zm = ZoneManager()
@@ -244,6 +252,7 @@ class TestZoneManagerScanning:
 # ---------------------------------------------------------------------------
 # ZoneManager — queries
 # ---------------------------------------------------------------------------
+
 
 class TestZoneManagerQueries:
     def test_get_zones(self):
@@ -305,6 +314,7 @@ class TestZoneManagerQueries:
 # ZoneManager — state history
 # ---------------------------------------------------------------------------
 
+
 class TestZoneManagerHistory:
     def test_history_empty_initially(self):
         zm = ZoneManager()
@@ -348,6 +358,7 @@ class TestZoneManagerHistory:
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
+
 
 class TestInternals:
     def test_detect_change_open_closed(self):

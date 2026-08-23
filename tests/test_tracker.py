@@ -21,10 +21,10 @@ from planner.tracker import (
     VALID_POSITIONS,
 )
 
-
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
+
 
 class TestConstants:
     def test_tracking_distance_positive(self):
@@ -61,6 +61,7 @@ class TestConstants:
 # IntrusionTracker — init
 # ---------------------------------------------------------------------------
 
+
 class TestTrackerInit:
     def test_initial_idle(self):
         t = IntrusionTracker()
@@ -76,6 +77,7 @@ class TestTrackerInit:
 # ---------------------------------------------------------------------------
 # IntrusionTracker — start/stop
 # ---------------------------------------------------------------------------
+
 
 class TestTrackerStartStop:
     def test_start(self):
@@ -113,6 +115,7 @@ class TestTrackerStartStop:
 # ---------------------------------------------------------------------------
 # IntrusionTracker — update with positions
 # ---------------------------------------------------------------------------
+
 
 class TestTrackerUpdate:
     def test_update_when_idle_returns_none(self):
@@ -184,6 +187,7 @@ class TestTrackerUpdate:
 # IntrusionTracker — target lost
 # ---------------------------------------------------------------------------
 
+
 class TestTrackerLost:
     def test_lost_starts_search(self):
         t = IntrusionTracker()
@@ -245,6 +249,7 @@ class TestTrackerLost:
 # IntrusionTracker — timeout
 # ---------------------------------------------------------------------------
 
+
 class TestTrackerTimeout:
     def test_tracking_timeout(self):
         t = IntrusionTracker()
@@ -265,6 +270,7 @@ class TestTrackerTimeout:
 # ---------------------------------------------------------------------------
 # IntrusionTracker — frame recording
 # ---------------------------------------------------------------------------
+
 
 class TestTrackerFrames:
     def test_record_frame(self):

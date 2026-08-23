@@ -67,7 +67,6 @@ from typing import Any
 
 import yaml
 
-
 # ── Constants ────────────────────────────────────────────────────────────────
 
 MAX_SENSORS = 16
@@ -93,17 +92,19 @@ WATTS_UNSET = 0
 
 # ── Data classes ─────────────────────────────────────────────────────────────
 
+
 @dataclass
 class SensorDesc:
     """Description of a single sensor on the robot."""
-    type: str               # imu, rangefinder, camera, pir, gps, lidar, etc.
+
+    type: str  # imu, rangefinder, camera, pir, gps, lidar, etc.
     model: str = ""
-    bus: str = ""           # i2c, spi, uart, gpio, csi
+    bus: str = ""  # i2c, spi, uart, gpio, csi
     address: int = ADDRESS_UNSET
     gpio: int = GPIO_UNSET
     gpio_trig: int = GPIO_UNSET
     gpio_echo: int = GPIO_UNSET
-    position: str = ""      # front, rear, left, right, top
+    position: str = ""  # front, rear, left, right, top
     rate_hz: int = RATE_UNSET
     max_range_mm: int = RANGE_UNSET
     resolution: tuple[int, int] = RESOLUTION_UNSET
@@ -114,19 +115,21 @@ class SensorDesc:
 @dataclass
 class ActuatorDesc:
     """Description of a single actuator on the robot."""
-    type: str               # motor, servo, buzzer, led
+
+    type: str  # motor, servo, buzzer, led
     model: str = ""
     pwm_channel: int = PWM_CHANNEL_UNSET
     dir_gpio: int = GPIO_UNSET
     encoder_gpio: int = GPIO_UNSET
     gpio: int = GPIO_UNSET
-    side: str = ""          # left, right
+    side: str = ""  # left, right
     count: int = COUNT_DEFAULT
 
 
 @dataclass
 class ChassisDesc:
     """Physical chassis dimensions and constraints."""
+
     wheel_base_mm: int = WHEEL_BASE_DEFAULT_MM
     wheel_diameter_mm: int = WHEEL_DIAMETER_DEFAULT_MM
     max_speed_pct: int = MAX_SPEED_DEFAULT_PCT
@@ -136,7 +139,8 @@ class ChassisDesc:
 @dataclass
 class PayloadDesc:
     """Description of an optional payload device."""
-    type: str               # spotlight, siren, laser, speaker, gripper, sprayer
+
+    type: str  # spotlight, siren, laser, speaker, gripper, sprayer
     gpio: int = GPIO_UNSET
     watts: int = WATTS_UNSET
 
@@ -144,8 +148,9 @@ class PayloadDesc:
 @dataclass
 class RobotDescription:
     """Complete declarative description of a robot's hardware."""
+
     name: str = "robot"
-    type: str = "wheeled"   # wheeled, drone, humanoid, ackermann
+    type: str = "wheeled"  # wheeled, drone, humanoid, ackermann
     chassis: ChassisDesc = field(default_factory=ChassisDesc)
     sensors: list[SensorDesc] = field(default_factory=list)
     actuators: list[ActuatorDesc] = field(default_factory=list)
@@ -172,14 +177,10 @@ class RobotDescription:
         chassis_raw = d.get("chassis", {})
         if chassis_raw:
             desc.chassis = ChassisDesc(
-                wheel_base_mm=chassis_raw.get("wheel_base_mm",
-                                              WHEEL_BASE_DEFAULT_MM),
-                wheel_diameter_mm=chassis_raw.get("wheel_diameter_mm",
-                                                  WHEEL_DIAMETER_DEFAULT_MM),
-                max_speed_pct=chassis_raw.get("max_speed_pct",
-                                              MAX_SPEED_DEFAULT_PCT),
-                track_width_mm=chassis_raw.get("track_width_mm",
-                                               TRACK_WIDTH_DEFAULT_MM),
+                wheel_base_mm=chassis_raw.get("wheel_base_mm", WHEEL_BASE_DEFAULT_MM),
+                wheel_diameter_mm=chassis_raw.get("wheel_diameter_mm", WHEEL_DIAMETER_DEFAULT_MM),
+                max_speed_pct=chassis_raw.get("max_speed_pct", MAX_SPEED_DEFAULT_PCT),
+                track_width_mm=chassis_raw.get("track_width_mm", TRACK_WIDTH_DEFAULT_MM),
             )
 
         # Sensors
@@ -189,46 +190,52 @@ class RobotDescription:
             resolution = s_raw.get("resolution", list(RESOLUTION_UNSET))
             if isinstance(resolution, list):
                 resolution = tuple(resolution)
-            desc.sensors.append(SensorDesc(
-                type=s_raw.get("type", ""),
-                model=s_raw.get("model", ""),
-                bus=s_raw.get("bus", ""),
-                address=s_raw.get("address", ADDRESS_UNSET),
-                gpio=s_raw.get("gpio", GPIO_UNSET),
-                gpio_trig=s_raw.get("gpio_trig", GPIO_UNSET),
-                gpio_echo=s_raw.get("gpio_echo", GPIO_UNSET),
-                position=s_raw.get("position", ""),
-                rate_hz=s_raw.get("rate_hz", RATE_UNSET),
-                max_range_mm=s_raw.get("max_range_mm", RANGE_UNSET),
-                resolution=resolution,
-                fps=s_raw.get("fps", FPS_UNSET),
-                baud=s_raw.get("baud", BAUD_UNSET),
-            ))
+            desc.sensors.append(
+                SensorDesc(
+                    type=s_raw.get("type", ""),
+                    model=s_raw.get("model", ""),
+                    bus=s_raw.get("bus", ""),
+                    address=s_raw.get("address", ADDRESS_UNSET),
+                    gpio=s_raw.get("gpio", GPIO_UNSET),
+                    gpio_trig=s_raw.get("gpio_trig", GPIO_UNSET),
+                    gpio_echo=s_raw.get("gpio_echo", GPIO_UNSET),
+                    position=s_raw.get("position", ""),
+                    rate_hz=s_raw.get("rate_hz", RATE_UNSET),
+                    max_range_mm=s_raw.get("max_range_mm", RANGE_UNSET),
+                    resolution=resolution,
+                    fps=s_raw.get("fps", FPS_UNSET),
+                    baud=s_raw.get("baud", BAUD_UNSET),
+                )
+            )
 
         # Actuators
         for a_raw in d.get("actuators", []):
             if len(desc.actuators) >= MAX_ACTUATORS:
                 break
-            desc.actuators.append(ActuatorDesc(
-                type=a_raw.get("type", ""),
-                model=a_raw.get("model", ""),
-                pwm_channel=a_raw.get("pwm_channel", PWM_CHANNEL_UNSET),
-                dir_gpio=a_raw.get("dir_gpio", GPIO_UNSET),
-                encoder_gpio=a_raw.get("encoder_gpio", GPIO_UNSET),
-                gpio=a_raw.get("gpio", GPIO_UNSET),
-                side=a_raw.get("side", ""),
-                count=a_raw.get("count", COUNT_DEFAULT),
-            ))
+            desc.actuators.append(
+                ActuatorDesc(
+                    type=a_raw.get("type", ""),
+                    model=a_raw.get("model", ""),
+                    pwm_channel=a_raw.get("pwm_channel", PWM_CHANNEL_UNSET),
+                    dir_gpio=a_raw.get("dir_gpio", GPIO_UNSET),
+                    encoder_gpio=a_raw.get("encoder_gpio", GPIO_UNSET),
+                    gpio=a_raw.get("gpio", GPIO_UNSET),
+                    side=a_raw.get("side", ""),
+                    count=a_raw.get("count", COUNT_DEFAULT),
+                )
+            )
 
         # Payloads
         for p_raw in d.get("payload", d.get("payloads", [])):
             if len(desc.payloads) >= MAX_PAYLOADS:
                 break
-            desc.payloads.append(PayloadDesc(
-                type=p_raw.get("type", ""),
-                gpio=p_raw.get("gpio", GPIO_UNSET),
-                watts=p_raw.get("watts", WATTS_UNSET),
-            ))
+            desc.payloads.append(
+                PayloadDesc(
+                    type=p_raw.get("type", ""),
+                    gpio=p_raw.get("gpio", GPIO_UNSET),
+                    watts=p_raw.get("watts", WATTS_UNSET),
+                )
+            )
 
         return desc
 

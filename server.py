@@ -15,18 +15,30 @@ Architecture:
 import asyncio
 import logging
 import os
+import struct
 import time
 import yaml
 
 import protocol
 from protocol import (
-    SensorPacket, sensor_packet_from_bytes,
-    ActuatorCmd, VelocityCmd, StatusPacket,
-    SENSOR_PACKET, CAMERA_FRAME, STATUS, ACTUATOR_CMD,
-    ROBOT_WHEELED, ROBOT_DRONE, ROBOT_HUMANOID,
+    SensorPacket,
+    sensor_packet_from_bytes,
+    ActuatorCmd,
+    VelocityCmd,
+    StatusPacket,
+    SENSOR_PACKET,
+    CAMERA_FRAME,
+    STATUS,
+    ACTUATOR_CMD,
+    ROBOT_WHEELED,
+    ROBOT_DRONE,
+    ROBOT_HUMANOID,
+    ROBOT_TYPE_BY_NAME,
+    ROBOT_TYPE_NAME_BY_ID,
+    ROBOT_TYPE_DEFAULT_NAME,
 )
-from perception.vision import VisionPerception
-from planner.decide import Planner
+from perception.vision import VisionPerception, VLM_TIMEOUT_S
+from planner.decide import Planner, LLM_TIMEOUT_S
 from planner.modes import ModeManager
 from planner.task_planner import TaskPlanner
 from planner.skills import get_skills
@@ -76,19 +88,33 @@ class RobotState:
         self.status: dict = {}
         self.connected: bool = False
 
+    def reset(self):
+        """Clear all sensor/image state (but not `connected`, which the
+        caller manages). B-C5: must be called on every new connection —
+        otherwise a reconnecting robot's first cycle decides against stale
+        pre-disconnect sensors/odometry, and SLAM computes its odom delta
+        against a pre-reboot baseline the kernel has already forgotten.
+        """
+        self.sensors = {}
+        self.odom = {"dist_mm": 0, "heading_cdeg": 0}
+        self.last_image = b""
+        self.last_sensor_time = 0
+        self.last_image_time = 0
+        self.status = {}
+
     def update_sensors(self, pkt):
         self.sensors = {
-            "battery_mv":      pkt.battery_mv,
+            "battery_mv": pkt.battery_mv,
         }
         if hasattr(pkt, "range_front_mm"):
             self.sensors["range_front_mm"] = pkt.range_front_mm
             self.sensors["range_right_mm"] = pkt.range_right_mm
         if hasattr(pkt, "accel_mg"):
-            self.sensors["accel_mg"]  = pkt.accel_mg
+            self.sensors["accel_mg"] = pkt.accel_mg
             self.sensors["gyro_mdps"] = pkt.gyro_mdps
         if hasattr(pkt, "odom_dist_mm"):
             self.odom = {
-                "dist_mm":     pkt.odom_dist_mm,
+                "dist_mm": pkt.odom_dist_mm,
                 "heading_cdeg": pkt.odom_hdg_cdeg,
             }
         self.last_sensor_time = time.time()
@@ -99,11 +125,62 @@ class RobotState:
 
     def update_status(self, pkt: StatusPacket):
         self.status = {
-            "mode":      pkt.mode,
-            "tasks_ok":  pkt.tasks_ok,
+            "mode": pkt.mode,
+            "tasks_ok": pkt.tasks_ok,
             "canary_ok": pkt.canary_ok,
-            "uptime_s":  pkt.uptime_s,
+            "uptime_s": pkt.uptime_s,
         }
+
+
+# RFC-0036: consecutive perception failures before the brain declares itself
+# "blind" and arms degraded mode. >1 so a single dropped frame / transient VLM
+# hiccup does not trigger containment.
+DEGRADE_PERCEPTION_FAIL_THRESHOLD: int = 3
+
+# Hard ceiling on a single _navigate_to() call from _task_worker (RETURN_TO_DOCK
+# / INVESTIGATE_ZONE). Without this, a stuck path-follow (e.g. SLAM giving no
+# progress, or the robot wedged against an obstacle) blocks the task queue —
+# and every subsequent queued task — forever. This is a backstop, not the
+# primary navigation timing (PatrolController has its own per-waypoint-reach
+# logic); it's set generously above any real navigation leg.
+NAVIGATION_TIMEOUT_S: float = 120.0
+
+# B-A15: deadline for reading one frame off the robot link. `read_packet` has
+# no internal timeout and `run()` sets none on the socket, so a peer that opens
+# TCP/9000 and then sends nothing parks in `readexactly()` forever — and since
+# handle_robot() refuses a second connection while `self._writer` is set (B-A1),
+# that single idle socket locks the real robot out until the process restarts.
+#
+# This is deliberately NOT `safety_profile.comms_timeout_s`: that knob is a
+# *staleness* threshold ("how old may the last sensor packet be before we treat
+# the robot as out of contact", 3.0s on a drone) and is checked independently
+# in _safety_check. Reusing it here would drop links over ordinary jitter well
+# before the safety layer has anything to say. This is the far looser "this
+# peer is not talking at all" backstop.
+#
+# NOTE: read_packet is not an atomic read (header then body), so a timeout can
+# land mid-frame with bytes already consumed. The stream is unrecoverable at
+# that point — _packet_stream closes the connection rather than resyncing.
+LINK_READ_TIMEOUT_S: float = 30.0
+
+# ── Actuation-link security posture (finding B-A13) ──────────────────────────
+#
+# Env var that explicitly opts the robot link out of authentication. Mirrors
+# api.py's ROBOT_BRAIN_ALLOW_INSECURE convention but is a SEPARATE variable on
+# purpose: ROBOT_BRAIN_ALLOW_INSECURE already gates two HTTP tiers, and
+# "let me open the dashboard without a token" must not silently also open the
+# link that drives motors.
+ENV_ALLOW_INSECURE_LINK: str = "ROBOT_BRAIN_ALLOW_INSECURE_LINK"
+
+#: Value of ENV_ALLOW_INSECURE_LINK that enables unauthenticated mode.
+ALLOW_INSECURE_LINK_VALUE: str = "1"
+
+#: Bind address used when the link is authenticated (real robots are remote).
+LINK_BIND_ANY: str = "0.0.0.0"
+
+#: Bind address used in explicit insecure mode — SITL/QEMU only (both dial
+#: 127.0.0.1; QEMU user-net maps the guest's 10.0.2.2 onto the host loopback).
+LINK_BIND_LOOPBACK: str = "127.0.0.1"
 
 
 class BrainServer:
@@ -117,8 +194,15 @@ class BrainServer:
         robot_type_str = self.config["robot"].get("type", "wheeled")
 
         # Perception + reactive planner (VLM/LLM)
-        self.vision  = VisionPerception(lm["host"], lm["port"], lm["vlm_model"])
+        self.vision = VisionPerception(lm["host"], lm["port"], lm["vlm_model"])
         self.planner = Planner(lm["host"], lm["port"], lm["llm_model"])
+
+        # RFC-0036: brain-triggered degraded mode. When perception fails for
+        # several cycles in a row the brain has effectively gone blind — a
+        # situational hazard the kernel cannot perceive — so it arms degraded
+        # mode (capability containment) and clears it on recovery.
+        self._perception_fail_streak = 0
+        self._degraded_sent = False
 
         # Experience store (persistent plan outcome memory)
         exp_dir = self.config.get("experience", {}).get("dir", "data/experience")
@@ -126,19 +210,43 @@ class BrainServer:
 
         # Meta-reviewer (LLM heuristic extraction)
         self.meta_reviewer = MetaReviewer(
-            lm["host"], lm["port"], lm["llm_model"],
+            lm["host"],
+            lm["port"],
+            lm["llm_model"],
             experience=self.experience,
             robot_type=robot_type_str,
         )
 
         # Task planner (LLM → skill plan) — with experience + meta hooks
-        self.task_planner = TaskPlanner(lm["host"], lm["port"], lm["llm_model"],
-                                        robot_type=robot_type_str,
-                                        experience=self.experience,
-                                        meta=self.meta_reviewer)
+        self.task_planner = TaskPlanner(
+            lm["host"],
+            lm["port"],
+            lm["llm_model"],
+            robot_type=robot_type_str,
+            experience=self.experience,
+            meta=self.meta_reviewer,
+        )
 
-        # Policy translator
-        self.robot_type = ROBOT_WHEELED
+        # Policy translator.
+        #
+        # B-A14: robot_type is the operator's declaration, taken from config
+        # and never from the wire. It used to be hardwired to ROBOT_WHEELED
+        # here and then overwritten by whatever robot_type the first STATUS
+        # packet claimed (_on_status). Two bugs fell out of that:
+        #   1. With `robot: type: drone` in config the server booted with a
+        #      DRONE policy but a WHEELED safety profile (built from
+        #      self.robot_type at :268) until a STATUS happened to arrive.
+        #   2. Any peer that reached TCP/9000 could rewrite it. handle_robot()
+        #      resets self.state and self._prev_odom per connection (B-C5) but
+        #      not self.robot_type, so one 8-byte STATUS from an attacker
+        #      persisted across the disconnect and mis-parsed / mis-safety-
+        #      checked the real robot's next session.
+        # Config is now the single source of truth; _on_status validates
+        # against it instead of assigning from it.
+        self._configured_robot_type = ROBOT_TYPE_BY_NAME.get(
+            str(robot_type_str).lower(), ROBOT_WHEELED
+        )
+        self.robot_type = self._configured_robot_type
         self.policy = get_translator(robot_type_str, self.config)
 
         # Mode manager
@@ -185,14 +293,18 @@ class BrainServer:
 
         # RTSP camera network (fixed surveillance cameras)
         rtsp_cameras = cameras_from_config(self.config)
-        self.rtsp_monitor = RtspMonitor(
-            cameras=rtsp_cameras,
-            vision=self.vision,
-            on_threat=self._on_rtsp_threat,
-            detect_labels=self.config.get("modes", {}).get(
-                "guardia", {}
-            ).get("detect", ["person", "vehicle", "fire"]),
-        ) if rtsp_cameras else None
+        self.rtsp_monitor = (
+            RtspMonitor(
+                cameras=rtsp_cameras,
+                vision=self.vision,
+                on_threat=self._on_rtsp_threat,
+                detect_labels=self.config.get("modes", {})
+                .get("guardia", {})
+                .get("detect", ["person", "vehicle", "fire"]),
+            )
+            if rtsp_cameras
+            else None
+        )
 
         # Zones of interest manager
         self.zone_manager = ZoneManager()
@@ -210,7 +322,7 @@ class BrainServer:
         )
 
         # Robot state
-        self.state       = RobotState()
+        self.state = RobotState()
         self.safety_profile = SafetyProfile.for_robot_type(self.robot_type, self.config)
         battery_mah = self.config.get("battery", {}).get("nominal_mah", 3600)
         self.battery_monitor = BatteryMonitor(nominal_mah=battery_mah)
@@ -221,8 +333,9 @@ class BrainServer:
         self.gps_mission: GpsMission | None = None
         geofence_cfg = self.config.get("geofence", {})
         if geofence_cfg.get("enabled") and geofence_cfg.get("polygon"):
-            self.geofence = Geofence(polygon=geofence_cfg["polygon"],
-                                     margin_m=geofence_cfg.get("margin_m", 5.0))
+            self.geofence = Geofence(
+                polygon=geofence_cfg["polygon"], margin_m=geofence_cfg.get("margin_m", 5.0)
+            )
         else:
             self.geofence = None
 
@@ -257,41 +370,111 @@ class BrainServer:
 
         # HTTP API
         api_cfg = self.config.get("api", {})
-        self.api = APIServer(self, port=api_cfg.get("port", 8080)) \
-                   if api_cfg.get("enabled", True) else None
+        self.api = (
+            APIServer(self, port=api_cfg.get("port", 8080))
+            if api_cfg.get("enabled", True)
+            else None
+        )
 
         # Robot description (declarative YAML hardware spec)
         robot_desc_path = os.path.join(os.path.dirname(__file__), "robot.yaml")
         if os.path.exists(robot_desc_path):
             self.robot_description = RobotDescription.from_yaml(robot_desc_path)
-            logger.info("[Brain] Loaded robot description: %s (%s)",
-                        self.robot_description.name, self.robot_description.type)
+            logger.info(
+                "[Brain] Loaded robot description: %s (%s)",
+                self.robot_description.name,
+                self.robot_description.type,
+            )
         else:
             self.robot_description = None
 
         # Transform tree (sensor frame offsets from base_link)
         if self.robot_description:
-            self.transforms = TransformTree.from_robot_description(
-                self.robot_description)
-            logger.info("[Brain] Transform tree: %d frames",
-                        len(self.transforms.list_frames()))
+            self.transforms = TransformTree.from_robot_description(self.robot_description)
+            logger.info("[Brain] Transform tree: %d frames", len(self.transforms.list_frames()))
         else:
             self.transforms = TransformTree()  # default with just base_link
 
     # ── ActuatorCmd sender (used by SkillRunner) ──────────────────────────────
 
     async def _send_actuator_cmd(self, cmd: ActuatorCmd):
+        if self._writer is None:
+            logger.error(
+                "[BRAIN] _send_actuator_cmd: no active connection — "
+                "dropping ActuatorCmd (type=%d channels=%r)",
+                cmd.actuator_type,
+                cmd.channels,
+            )
+            return
+        await protocol.send_packet(self._writer, ACTUATOR_CMD, cmd.to_bytes())
+
+    async def _send_predict_cmd(self, pred):
+        """RFC-0034: send the brain's predicted NEXT command (PKT_PREDICT) so the
+        kernel can speculate ahead of the confirmed command. Best-effort — a
+        dropped prediction just means no speculation that cycle."""
         if self._writer:
-            await protocol.send_packet(self._writer, ACTUATOR_CMD, cmd.to_bytes())
+            await protocol.send_packet(self._writer, protocol.PREDICT_CMD, pred.to_bytes())
+
+    async def _send_degrade_cmd(self, reason: int):
+        """RFC-0036: arm (reason>0) or clear (reason=0) kernel degraded mode. The
+        kernel contains the userspace blast radius at the capability chokepoint
+        while its in-kernel control loop keeps safe-stopping."""
+        if self._writer:
+            await protocol.send_packet(
+                self._writer, protocol.DEGRADE_CMD, protocol.DegradeCmd(reason=reason).to_bytes()
+            )
 
     # ── Robot connection handler ──────────────────────────────────────────────
 
-    async def handle_robot(self, reader: asyncio.StreamReader,
-                           writer: asyncio.StreamWriter):
+    async def handle_robot(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
         addr = writer.get_extra_info("peername")
+
+        # B-A1: self._writer/self.runner/self.patrol/self.state are plain
+        # instance attributes shared by whatever connection is active — there
+        # was never a concurrency-safe path for two robots to be connected to
+        # the same BrainServer at once. A second connection silently stole
+        # self._writer (the first robot's commands then went to the second
+        # robot), and the first robot's eventual disconnect `finally` block
+        # unconditionally tore down the second robot's runner/secure channel.
+        # Multi-robot fleets run one BrainServer per robot (see
+        # FleetManager/data-plane in fleet.py) — enforce that invariant
+        # explicitly instead of silently corrupting shared state. No `await`
+        # between this check and `self._writer = writer` below, so this is
+        # race-free under asyncio's cooperative scheduling.
+        if self._writer is not None:
+            print(
+                f"[BRAIN] Rejecting connection from {addr}: already serving a "
+                f"robot (one robot per BrainServer instance — see fleet.py "
+                f"for multi-robot deployment)"
+            )
+            writer.close()
+            await writer.wait_closed()
+            return
+
         print(f"[BRAIN] Robot connected from {addr}")
         self.state.connected = True
         self._writer = writer
+
+        # B-C5: clear stale sensor/odom/image state from any previous
+        # connection before this one starts. Without this, the first
+        # perception cycle after a reconnect decides against pre-disconnect
+        # sensor data, and _feed_slam computes its odometry delta against a
+        # baseline the kernel (which may have rebooted) has already forgotten.
+        self.state.reset()
+        self._prev_odom = {"dist_mm": 0, "heading_cdeg": 0}
+
+        # RFC-0019: if encryption is armed, complete the initiator handshake
+        # BEFORE any packet is sent (the LED set_state below would otherwise
+        # write plaintext). On failure, drop the connection — no fallback.
+        if protocol.encrypt_link_armed():
+            if not await protocol.perform_handshake(reader, writer):
+                print(
+                    f"[BRAIN] secure_channel: handshake failed for {addr}, " "dropping connection"
+                )
+                self.state.connected = False
+                self._writer = None
+                writer.close()
+                return
 
         # Register in fleet (E07). Use peer addr as provisional id; a later
         # STATUS packet may refine the robot_type.
@@ -308,8 +491,15 @@ class BrainServer:
         await self.led.set_state("monitoring", writer)
 
         # Create SkillRunner bound to this connection (with experience callback)
-        self.runner = SkillRunner(self.policy, self._send_actuator_cmd,
-                                  on_plan_done=self._on_plan_done)
+        self.runner = SkillRunner(
+            self.policy,
+            self._send_actuator_cmd,
+            on_plan_done=self._on_plan_done,
+            send_predict=self._send_predict_cmd,
+            is_comms_stale=lambda: (
+                time.time() - self.state.last_sensor_time > self.safety_profile.comms_timeout_s
+            ),
+        )
 
         # Create PatrolController bound to this connection
         self.patrol = PatrolController(
@@ -320,11 +510,27 @@ class BrainServer:
             policy=self.policy,
             on_waypoint_reached=self._on_waypoint_reached,
             on_detection=self._on_detection,
+            is_connected=lambda: self.state.connected,
         )
 
+        self._packet_parse_errors = 0
         try:
             async for pkt_type, payload in self._packet_stream(reader):
-                await self._dispatch(pkt_type, payload, writer)
+                try:
+                    await self._dispatch(pkt_type, payload, writer)
+                except (ValueError, struct.error) as e:
+                    # Malformed/truncated packet body (e.g. sensor_packet_
+                    # from_bytes below MIN_SIZE). Drop just this packet and
+                    # keep the connection — one bad frame shouldn't force a
+                    # full robot reconnect + handshake.
+                    self._packet_parse_errors += 1
+                    logger.warning(
+                        "[BRAIN] Packet parse error (type=0x%02x, total=%d): %s",
+                        pkt_type,
+                        self._packet_parse_errors,
+                        e,
+                    )
+                    continue
 
         except asyncio.IncompleteReadError:
             print("[BRAIN] Robot disconnected")
@@ -333,6 +539,9 @@ class BrainServer:
         finally:
             self.state.connected = False
             self._writer = None
+            # Drop the per-connection encrypted channel so a reconnect runs a
+            # fresh RFC-0019 handshake with new ephemeral keys (forward secrecy).
+            protocol.reset_secure_channel()
             # Mark disconnected in the fleet registry (keeps record for history)
             current_id = getattr(self, "_current_robot_id", None)
             if current_id:
@@ -345,14 +554,32 @@ class BrainServer:
     async def _packet_stream(self, reader: asyncio.StreamReader):
         """Async generator that yields (pkt_type, payload) packets."""
         while True:
-            result = await protocol.read_packet(reader)
+            # B-A15: bound the read. Without a deadline a peer that connects
+            # and then sends nothing blocks here forever, and because
+            # handle_robot() serves one robot at a time that idle socket denies
+            # service to the real robot indefinitely.
+            try:
+                result = await asyncio.wait_for(
+                    protocol.read_packet(reader), timeout=LINK_READ_TIMEOUT_S
+                )
+            except asyncio.TimeoutError:
+                # Close, never resume: read_packet reads a header and then a
+                # body, so the timeout may have fired between the two with
+                # header bytes already consumed. Continuing the loop would
+                # parse the next frame at a mid-frame offset. Log explicitly —
+                # letting this propagate to handle_robot's `except Exception`
+                # printed a bare, empty "[BRAIN] Error:" line.
+                print(
+                    f"[BRAIN] No packet within {LINK_READ_TIMEOUT_S:.0f}s — "
+                    f"dropping idle connection"
+                )
+                break
             if result is None:
                 print("[BRAIN] Invalid packet")
                 break
             yield result
 
-    async def _dispatch(self, pkt_type: int, payload: bytes,
-                        writer: asyncio.StreamWriter):
+    async def _dispatch(self, pkt_type: int, payload: bytes, writer: asyncio.StreamWriter):
         """Route a received packet to the appropriate handler."""
 
         if pkt_type == SENSOR_PACKET:
@@ -379,20 +606,35 @@ class BrainServer:
             if self.deterrent.active:
                 await self.deterrent.check_timeout(writer)
             # Log sensor event (E06)
-            self.mission_logger.log_event("sensor", {
-                "battery_mv": pkt.battery_mv,
-                "dist_mm": getattr(pkt, "dist_mm", 0),
-                "heading_cdeg": getattr(pkt, "heading_cdeg", 0),
-            })
+            self.mission_logger.log_event(
+                "sensor",
+                {
+                    "battery_mv": pkt.battery_mv,
+                    "dist_mm": getattr(pkt, "odom_dist_mm", 0),
+                    "heading_cdeg": getattr(pkt, "odom_hdg_cdeg", 0),
+                },
+            )
 
-            # Geofence check (E03)
-            if self.geofence and hasattr(pkt, "gps_lat") and pkt.gps_lat != 0:
-                pos = GpsPosition(lat=pkt.gps_lat / 1e7, lon=pkt.gps_lon / 1e7)
+            # Geofence check (E03). GPS only exists on the drone SensorPacket
+            # variant (gps_lat_deg7/gps_lon_deg7, degrees x1e7); wheeled/
+            # humanoid packets don't carry GPS so hasattr() naturally skips
+            # them here.
+            if self.geofence and hasattr(pkt, "gps_lat_deg7") and pkt.gps_lat_deg7 != 0:
+                pos = GpsPosition(lat=pkt.gps_lat_deg7 / 1e7, lon=pkt.gps_lon_deg7 / 1e7)
                 if pos.has_fix and not self.geofence.contains(pos):
                     logger.warning("[GEOFENCE] Robot outside boundary!")
                     asyncio.create_task(
-                        self.notifier.alert("Robot outside geofence boundary",
-                                            title="Geofence Violation")
+                        self.notifier.alert(
+                            "Robot outside geofence boundary", title="Geofence Violation"
+                        )
+                    )
+                    # Physical response, not just a notification: hard E-Stop
+                    # with the geofence reason so the kernel's L0 safety
+                    # layer can act even if userspace/the LLM loop is wedged.
+                    await protocol.send_packet(
+                        writer,
+                        protocol.ESTOP_CMD,
+                        protocol.EStopCmd(reason=protocol.ESTOP_REASON_GEOFENCE).to_bytes(),
                     )
 
             # Update detailed battery monitor (E09)
@@ -435,8 +677,9 @@ class BrainServer:
 
     async def _on_waypoint_reached(self, wp, index: int):
         """Called when patrol reaches a waypoint — trigger VLM scan."""
-        logger.info("[Patrol] Reached waypoint %d: (%d, %d) %s",
-                    index, wp.x_mm, wp.y_mm, wp.label or "")
+        logger.info(
+            "[Patrol] Reached waypoint %d: (%d, %d) %s", index, wp.x_mm, wp.y_mm, wp.label or ""
+        )
 
         # Skip scan if zone manager says not this pass (normal waypoints)
         if not self.zone_manager.should_scan(wp):
@@ -448,9 +691,17 @@ class BrainServer:
         # If we have a recent image, run VLM to check for detections
         if self.state.last_image:
             try:
-                scene = self.vision.describe(
-                    self.state.last_image,
-                    context=f"patrol waypoint {index} ({wp.label})",
+                # Blocking OpenAI-client call (LM Studio) — must not stall
+                # the event loop. Off-thread + hard timeout so a stuck/dead
+                # VLM backend degrades to "skip this scan", not "wedge the
+                # whole brain".
+                scene = await asyncio.wait_for(
+                    asyncio.to_thread(
+                        self.vision.describe,
+                        self.state.last_image,
+                        context=f"patrol waypoint {index} ({wp.label})",
+                    ),
+                    timeout=VLM_TIMEOUT_S,
                 )
                 print(f"[VLM@wp{index}] {scene}")
 
@@ -459,12 +710,16 @@ class BrainServer:
                     self.zone_manager.tag_waypoint(wp, scene)
                 else:
                     changed, change_desc = self.zone_manager.check_state(
-                        wp, scene,
+                        wp,
+                        scene,
                     )
                     if changed:
                         print(f"[ZONE CHANGE] {change_desc}")
-                        actions = self.mode_manager.on_detect_actions() \
-                            if self.mode_manager.current else []
+                        actions = (
+                            self.mode_manager.on_detect_actions()
+                            if self.mode_manager.current
+                            else []
+                        )
                         await self.alert_pipeline.raise_alert(
                             trigger_label=f"zone_change_wp{index}",
                             detection_label=f"zone_{wp.zone_type}",
@@ -505,12 +760,9 @@ class BrainServer:
                     if not detected and "clear" in scene.lower():
                         await self.power.report_clear(self._writer)
                         if self.deterrent.active:
-                            stood_down = await self.deterrent.report_clear(
-                                self._writer
-                            )
+                            stood_down = await self.deterrent.report_clear(self._writer)
                             if stood_down:
-                                await self.led.set_state("monitoring",
-                                                        self._writer)
+                                await self.led.set_state("monitoring", self._writer)
 
             except Exception as e:
                 logger.error("[Patrol] VLM error at waypoint %d: %s", index, e)
@@ -522,8 +774,7 @@ class BrainServer:
         """Called on a confirmed detection during patrol."""
         await self.led.set_state("confirmed", self._writer)
         asyncio.create_task(
-            self.notifier.alert(f"Detection: {label}", title="Patrol Alert",
-                                image_data=image_data)
+            self.notifier.alert(f"Detection: {label}", title="Patrol Alert", image=image_data)
         )
 
     # ── Auto-docking callbacks ──────────────────────────────────────────
@@ -571,12 +822,15 @@ class BrainServer:
         """Called when an RTSP camera confirms a threat — dispatch robot."""
         logger.info(
             "[RTSP] Threat on '%s': %s (%s)",
-            event.camera_name, event.detection_label, event.vlm_description,
+            event.camera_name,
+            event.detection_label,
+            event.vlm_description,
         )
         # Escalate to ALERT mode
         if self._writer:
             await self.power.trigger_alert(
-                f"rtsp_{event.camera_name}", self._writer,
+                f"rtsp_{event.camera_name}",
+                self._writer,
             )
             await self.led.set_state("detecting", self._writer)
 
@@ -595,14 +849,11 @@ class BrainServer:
 
         # Dispatch robot to investigate zone
         if event.zone_waypoint:
-            await self.task_queue.put(
-                f"INVESTIGATE_ZONE {event.zone_waypoint}"
-            )
+            await self.task_queue.put(f"INVESTIGATE_ZONE {event.zone_waypoint}")
 
     # ── Sensor triggers (PIR/sound/IR) ────────────────────────────────────
 
-    async def _process_sensor_triggers(self, sensor_flags: int,
-                                       writer: asyncio.StreamWriter):
+    async def _process_sensor_triggers(self, sensor_flags: int, writer: asyncio.StreamWriter):
         """Process digital sensor triggers — escalate to ALERT + VLM confirm."""
         triggers = self.sensor_fusion.process_flags(sensor_flags)
         if not triggers:
@@ -617,9 +868,15 @@ class BrainServer:
         if self.state.last_image:
             try:
                 trigger_names = ", ".join(t.label for t in triggers)
-                scene = self.vision.describe(
-                    self.state.last_image,
-                    context=f"sensor trigger: {trigger_names}",
+                # Blocking OpenAI-client call — see _on_waypoint_reached for
+                # why this is off-thread + timeout-bounded.
+                scene = await asyncio.wait_for(
+                    asyncio.to_thread(
+                        self.vision.describe,
+                        self.state.last_image,
+                        context=f"sensor trigger: {trigger_names}",
+                    ),
+                    timeout=VLM_TIMEOUT_S,
                 )
                 print(f"[VLM@sensor] {scene}")
 
@@ -656,9 +913,7 @@ class BrainServer:
                     if "clear" in scene.lower():
                         await self.power.report_clear(writer)
                         if self.deterrent.active:
-                            stood_down = await self.deterrent.report_clear(
-                                writer
-                            )
+                            stood_down = await self.deterrent.report_clear(writer)
                             if stood_down:
                                 await self.led.set_state("monitoring", writer)
                     await self.led.set_state("monitoring", writer)
@@ -705,6 +960,15 @@ class BrainServer:
     _CAM_FMT_GRAY8 = 0
     _CAM_FMT_JPEG = 1
 
+    # OOM guard: reject attacker-controlled dimensions that would allocate an
+    # enormous buffer.  The kernel-side camera drivers encode at 320×240 for
+    # the robot's on-board camera, but we allow up to 1920×1080 so the brain
+    # can also accept frames from higher-resolution USB cameras without changes.
+    # A 65535×65535 Gray8 frame would be ~4 GB — reject it before PIL touches it.
+    _MAX_CAM_WIDTH = 1920
+    _MAX_CAM_HEIGHT = 1080
+    _MAX_CAM_PIXELS = _MAX_CAM_WIDTH * _MAX_CAM_HEIGHT  # 2 073 600
+
     def _decode_camera(self, payload: bytes) -> bytes | None:
         """Decode a CAMERA_FRAME payload. Returns JPEG bytes for the VLM.
 
@@ -714,10 +978,25 @@ class BrainServer:
         """
         if len(payload) < self._CAM_HDR_SIZE:
             return None
-        import struct
         width, height, fmt = struct.unpack_from("<HHB", payload)
-        image_data = payload[self._CAM_HDR_SIZE:]
+        image_data = payload[self._CAM_HDR_SIZE :]
         if not image_data:
+            return None
+
+        # Guard against OOM: reject frames with out-of-range dimensions before
+        # any buffer is allocated.  Malformed/attacker-controlled packets cannot
+        # trigger a multi-GB allocation this way.
+        if width > self._MAX_CAM_WIDTH or height > self._MAX_CAM_HEIGHT:
+            print(
+                f"[BRAIN] Camera: frame dimensions {width}×{height} exceed "
+                f"cap {self._MAX_CAM_WIDTH}×{self._MAX_CAM_HEIGHT} — dropped"
+            )
+            return None
+        if width * height > self._MAX_CAM_PIXELS:
+            print(
+                f"[BRAIN] Camera: {width}×{height}={width * height} px exceeds "
+                f"max {self._MAX_CAM_PIXELS} px — dropped"
+            )
             return None
 
         if fmt == self._CAM_FMT_JPEG:
@@ -731,6 +1010,7 @@ class BrainServer:
             try:
                 from PIL import Image
                 import io
+
                 img = Image.frombytes("L", (width, height), image_data[:expected])
                 buf = io.BytesIO()
                 img.save(buf, format="JPEG", quality=70)
@@ -750,6 +1030,33 @@ class BrainServer:
         ROBOT_DRONE: 4,
         ROBOT_HUMANOID: 12,
     }
+
+    async def emergency_stop(self, reason: str = "emergency_stop") -> None:
+        """Central emergency-stop entry point for every operator/error-
+        triggered stop path (HTTP /stop, Telegram /stop, in-brain perception-
+        error stop). Robot-type aware: a drone must HOVER in place, not
+        receive a diff-drive zero-channel ActuatorCmd — wrong actuator_type
+        and channel count, which the kernel would either reject or (worse)
+        misinterpret as throttle/roll/pitch/yaw=0 (freefall, not a safe
+        state) rather than a hold.
+        """
+        # getattr-defensive like the call sites this replaces (api.py/
+        # telegram_bot.py used getattr(self.brain, "runner", None) before
+        # routing through here): this method now runs against BrainServer
+        # instances that may be partially constructed (tests build one via
+        # BrainServer.__new__() + hand-picked attributes).
+        runner = getattr(self, "runner", None)
+        if runner:
+            runner.interrupt(reason)
+        if not self._writer:
+            return
+        robot_type = getattr(self, "robot_type", ROBOT_WHEELED)
+        if robot_type == ROBOT_DRONE:
+            cmd = self.policy.translate("HOVER")
+        else:
+            n_channels = self._STOP_CHANNELS.get(robot_type, 2)
+            cmd = ActuatorCmd.stop(n_channels=n_channels)
+        await protocol.send_packet(self._writer, ACTUATOR_CMD, cmd.to_bytes())
 
     async def _safety_check(self, pkt, writer: asyncio.StreamWriter):
         """Hard safety stops — always evaluated, regardless of planner state.
@@ -790,12 +1097,9 @@ class BrainServer:
 
         # Notify operator for battery violations
         for bv in battery_violations:
-            asyncio.create_task(
-                self.notifier.alert(bv, title="Battery Alert")
-            )
+            asyncio.create_task(self.notifier.alert(bv, title="Battery Alert"))
 
-    async def _drone_emergency(self, pkt, writer: asyncio.StreamWriter,
-                               violations: list[str]):
+    async def _drone_emergency(self, pkt, writer: asyncio.StreamWriter, violations: list[str]):
         """Handle drone-specific emergency actions.
 
         Priority order:
@@ -812,8 +1116,7 @@ class BrainServer:
             cmd = self.policy.translate("LAND")
             await protocol.send_packet(writer, ACTUATOR_CMD, cmd.to_bytes())
             asyncio.create_task(
-                self.notifier.alert("DRONE CRITICAL BATTERY — LANDING NOW",
-                                    title="DRONE EMERGENCY")
+                self.notifier.alert("DRONE CRITICAL BATTERY — LANDING NOW", title="DRONE EMERGENCY")
             )
 
         elif action == "rtl":
@@ -823,8 +1126,7 @@ class BrainServer:
             cmd = self.policy.translate("RETURN_HOME")
             await protocol.send_packet(writer, ACTUATOR_CMD, cmd.to_bytes())
             asyncio.create_task(
-                self.notifier.alert("Drone low battery — returning home",
-                                    title="Drone RTL")
+                self.notifier.alert("Drone low battery — returning home", title="Drone RTL")
             )
 
         else:
@@ -846,51 +1148,131 @@ class BrainServer:
         if self.alert_pipeline.active_evidence:
             await self.alert_pipeline.save_evidence_frame(image_data)
 
+        # B-C5: refuse to command movement from stale sensor data. Camera
+        # frames (which drive this cycle) and SENSOR_PACKETs are separate
+        # pipelines — if the kernel stops sending sensors but keeps sending
+        # frames, the LLM would otherwise decide against a frozen
+        # self.state.sensors/odom snapshot (or, right after a reconnect
+        # before the first sensor packet arrives, an all-default one).
+        # getattr-defensive like emergency_stop(): this method also runs
+        # against partially-constructed BrainServer instances in tests.
+        last_sensor_time = getattr(self.state, "last_sensor_time", None)
+        comms_timeout_s = getattr(getattr(self, "safety_profile", None), "comms_timeout_s", None)
+        if last_sensor_time is not None and comms_timeout_s is not None:
+            comms_age = time.time() - last_sensor_time
+            if comms_age > comms_timeout_s:
+                logger.warning(
+                    "[SAFETY] Sensor data stale (%.1fs > %.1fs) — refusing to act, STOP",
+                    comms_age, comms_timeout_s,
+                )
+                await self.emergency_stop("stale sensor data")
+                return
+
         if self.mode_manager.uses_llm():
             # LLM reactive mode: VLM describes scene → LLM picks single action
             try:
-                scene = self.vision.describe(image_data,
-                                             context=self.mode_manager.current_name)
+                # Both calls below hit LM Studio via the synchronous OpenAI
+                # client — blocking the event loop here would stall every
+                # other connection (sensor packets, HTTP API, Telegram) for
+                # the duration of the HTTP round-trip. Run off-thread with a
+                # hard timeout so a stuck/dead backend degrades to "skip
+                # this cycle" (caught below, falls through to STOP) instead
+                # of freezing the whole brain.
+                scene = await asyncio.wait_for(
+                    asyncio.to_thread(
+                        self.vision.describe,
+                        image_data,
+                        context=self.mode_manager.current_name,
+                    ),
+                    timeout=VLM_TIMEOUT_S,
+                )
                 print(f"[VLM] {scene}")
 
-                action = self.planner.decide(
-                    scene=scene,
-                    sensors=self.state.sensors,
-                    task=self.mode_manager.current_name,
-                    odom=self.state.odom,
+                action = await asyncio.wait_for(
+                    asyncio.to_thread(
+                        self.planner.decide,
+                        scene=scene,
+                        sensors=self.state.sensors,
+                        task=self.mode_manager.current_name,
+                        odom=self.state.odom,
+                    ),
+                    timeout=LLM_TIMEOUT_S,
                 )
                 print(f"[LLM] {action}")
 
                 cmd = self.policy.from_text(action)
+                # RFC-0035: reactive-LLM actions are lower-confidence than
+                # deterministic plan/scripted steps → mark them so the kernel
+                # tightens the motor envelope (acts, but cautiously). Never on an
+                # emergency stop (that must not be slowed).
+                if not (cmd.flags & protocol.FLAG_EMERGENCY):
+                    cmd.flags |= protocol.FLAG_LOW_CONFIDENCE
                 await protocol.send_packet(writer, ACTUATOR_CMD, cmd.to_bytes())
+
+                # RFC-0036: perception succeeded — reset the blind streak and, if
+                # we had armed degraded mode, clear it now that the brain can see.
+                self._perception_fail_streak = 0
+                if self._degraded_sent:
+                    await self._send_degrade_cmd(protocol.DEGRADE_CLEAR)
+                    self._degraded_sent = False
+                    print("[BRAIN] perception recovered — degraded mode cleared")
 
             except Exception as e:
                 print(f"[BRAIN] AI error: {e} — STOP")
-                await protocol.send_packet(writer, ACTUATOR_CMD,
-                                           ActuatorCmd.stop(n_channels=2).to_bytes())
+                # Robot-type-aware stop (a drone must HOVER, not zero out
+                # diff-drive channels it doesn't have) — see emergency_stop().
+                await self.emergency_stop("perception/LLM error")
+                # RFC-0036: count consecutive blind cycles. Once persistently
+                # blind (not a single transient hiccup), arm degraded mode once
+                # so the kernel contains userspace until the brain recovers.
+                self._perception_fail_streak += 1
+                if (
+                    self._perception_fail_streak >= DEGRADE_PERCEPTION_FAIL_THRESHOLD
+                    and not self._degraded_sent
+                ):
+                    await self._send_degrade_cmd(protocol.DEGRADE_REASON_PERCEPTION_BLIND)
+                    self._degraded_sent = True
+                    print(
+                        f"[BRAIN] perception blind {self._perception_fail_streak}× "
+                        "— degraded mode armed"
+                    )
 
     # ── Status / type negotiation ─────────────────────────────────────────────
 
     async def _on_status(self, pkt: StatusPacket):
-        if pkt.robot_type != self.robot_type:
-            self.robot_type = pkt.robot_type
-            robot_type_str  = {0: "wheeled", 1: "drone", 2: "humanoid"}.get(
-                pkt.robot_type, "wheeled"
+        # B-A14: this is a VALIDATION, not a negotiation. It used to rebuild
+        # self.policy / self.safety_profile from the robot_type byte on the
+        # wire, which meant one unauthenticated STATUS packet re-armed the
+        # whole safety stack for a different chassis: _safety_check routed to
+        # _drone_emergency and emergency_stop sent HOVER to a diff-drive base.
+        # The robot type is a deployment fact the operator declares in
+        # config.yaml; a peer claiming otherwise is either misconfigured or
+        # hostile, and either way the answer is to say so loudly and keep the
+        # configured profile — never to adopt the claim.
+        if pkt.robot_type != self._configured_robot_type:
+            claimed = ROBOT_TYPE_NAME_BY_ID.get(pkt.robot_type, f"unknown({pkt.robot_type})")
+            configured = ROBOT_TYPE_NAME_BY_ID.get(
+                self._configured_robot_type, ROBOT_TYPE_DEFAULT_NAME
             )
-            self.policy = get_translator(pkt.robot_type, self.config)
-            self.safety_profile = SafetyProfile.for_robot_type(pkt.robot_type, self.config)
-            self.experience.update_robot_type(robot_type_str)
-            self.meta_reviewer.update_robot_type(robot_type_str)
-            self.task_planner.update_robot_type(robot_type_str)
-            if self.runner:
-                self.runner.policy = self.policy
-            print(f"[BRAIN] Robot type changed to {robot_type_str}")
-            print(f"[BRAIN] Safety profile: {robot_type_str}")
+            logger.warning(
+                "[BRAIN] STATUS claims robot_type=%s but config declares %s — "
+                "REJECTED, keeping the configured safety profile. Fix "
+                "robot.type in config.yaml if the chassis really changed.",
+                claimed,
+                configured,
+            )
 
     # ── Experience loop (Hyperagent) ────────────────────────────────────────
 
-    def _on_plan_done(self, plan: list, outcome: str, steps_executed: int,
-                      error: str, interrupt_reason: str, duration_s: float):
+    def _on_plan_done(
+        self,
+        plan: list,
+        outcome: str,
+        steps_executed: int,
+        error: str,
+        interrupt_reason: str,
+        duration_s: float,
+    ):
         """Called by SkillRunner when a plan finishes — records to experience."""
         task_desc = self._current_task_desc or "unknown"
         context = self._build_experience_context()
@@ -977,12 +1359,25 @@ class BrainServer:
                         await self.led.set_state("docking", self._writer)
                         dock = self.dock_manager.dock_info
                         from planner.mapper import Waypoint
+
                         wp = Waypoint(
-                            x_mm=dock.x_mm, y_mm=dock.y_mm,
-                            heading_cdeg=dock.heading_cdeg, label="dock",
+                            x_mm=dock.x_mm,
+                            y_mm=dock.y_mm,
+                            heading_cdeg=dock.heading_cdeg,
+                            label="dock",
                         )
                         self.dock_manager.state = DockState.NAVIGATING
-                        reached = await self.patrol._navigate_to(wp)
+                        try:
+                            reached = await asyncio.wait_for(
+                                self.patrol._navigate_to(wp),
+                                timeout=NAVIGATION_TIMEOUT_S,
+                            )
+                        except asyncio.TimeoutError:
+                            logger.error(
+                                "[Task] Navigation to dock timed out after %.0fs",
+                                NAVIGATION_TIMEOUT_S,
+                            )
+                            reached = False
                         if reached:
                             self.dock_manager.report_arrived_at_dock()
                             # IR homing would happen here in real hardware
@@ -991,8 +1386,7 @@ class BrainServer:
                             await self.led.set_state("docking", self._writer)
                         else:
                             self.dock_manager.abort()
-                            await self.led.set_state("monitoring",
-                                                     self._writer)
+                            await self.led.set_state("monitoring", self._writer)
                 elif task_desc.strip().upper() == "UNDOCK":
                     self.dock_manager.start_undock_sequence()
                     if self.runner:
@@ -1016,22 +1410,46 @@ class BrainServer:
                     if self.patrol and zone:
                         await self.led.set_state("detecting", self._writer)
                         # Navigate to zone waypoint, scan, report
-                        wp = self._mapper.get_waypoint_by_label(zone)
+                        wp = self.mapper.get_waypoint_by_label(zone)
                         if wp:
                             from planner.mapper import Waypoint
-                            await self.patrol._navigate_to(wp)
-                            await self.patrol._rotate_360()
-                            if self._on_waypoint_reached:
-                                await self._on_waypoint_reached(wp, 0)
+
+                            try:
+                                reached = await asyncio.wait_for(
+                                    self.patrol._navigate_to(wp),
+                                    timeout=NAVIGATION_TIMEOUT_S,
+                                )
+                            except asyncio.TimeoutError:
+                                logger.error(
+                                    "[Task] Navigation to zone '%s' timed " "out after %.0fs",
+                                    zone,
+                                    NAVIGATION_TIMEOUT_S,
+                                )
+                                reached = False
+                            if reached:
+                                await self.patrol._rotate_360()
+                                if self._on_waypoint_reached:
+                                    await self._on_waypoint_reached(wp, 0)
                         else:
                             logger.warning(
-                                "[Task] Zone '%s' not found in map", zone,
+                                "[Task] Zone '%s' not found in map",
+                                zone,
                             )
                         await self.led.set_state("monitoring", self._writer)
                 else:
                     self._current_task_desc = task_desc
                     context = self._build_experience_context()
-                    plan = self.task_planner.plan(task_desc, context=context)
+                    # Blocking OpenAI-client call — see _perception_cycle for
+                    # why this must be off-thread + timeout-bounded rather
+                    # than called inline from this coroutine.
+                    plan = await asyncio.wait_for(
+                        asyncio.to_thread(
+                            self.task_planner.plan,
+                            task_desc,
+                            context=context,
+                        ),
+                        timeout=LLM_TIMEOUT_S,
+                    )
                     print(f"[BRAIN] Plan: {plan}")
                     if self.runner:
                         await self.runner.execute_plan(plan)
@@ -1044,8 +1462,64 @@ class BrainServer:
 
     async def run(self):
         port = self.config["robot"]["listen_port"]
-        server = await asyncio.start_server(self.handle_robot, "0.0.0.0", port)
-        print(f"[BRAIN] Listening on port {port}")
+        # Activate the HMAC auth envelope around protocol.send/read_packet if
+        # `ROBOT_BRAIN_LINK_KEY` is set. The kernel side activates the matching
+        # envelope when `/fat/LINK.KEY` is present. Without a key the wire stays
+        # plaintext — which is now a start-up decision, not a silent fallback
+        # (see the B-A13 gate immediately below).
+        link_authenticated = protocol.enable_auth_envelope()
+        # B-A13: refuse to bind unless the operator has made an explicit
+        # decision about authenticating the link. Without a link key the only
+        # frame check on the plaintext path is CRC-8/MAXIM — integrity, not
+        # authentication — so *any* peer that opens this port is accepted as
+        # THE robot: registered in the fleet, feeding _safety_check and the
+        # geofence, and receiving every ACTUATOR_CMD/ESTOP_CMD we emit. This
+        # is the highest-consequence surface in the process and it was the only
+        # one that failed open; both HTTP tiers already refuse to start without
+        # a key or an explicit opt-in (api.py APIServer.run,
+        # control_plane.auth.BearerAuth.__init__). Same shape here.
+        insecure_link = os.environ.get(ENV_ALLOW_INSECURE_LINK) == ALLOW_INSECURE_LINK_VALUE
+        if not link_authenticated and not insecure_link:
+            raise RuntimeError(
+                "[BRAIN] Cannot start: the robot link has no authentication. "
+                "Set ROBOT_BRAIN_LINK_KEY to the shared secret provisioned as "
+                "the kernel's /fat/LINK.KEY, or set "
+                f"{ENV_ALLOW_INSECURE_LINK}={ALLOW_INSECURE_LINK_VALUE} to "
+                "explicitly accept an unauthenticated actuation link "
+                "(SITL/development only — any peer that reaches the port then "
+                "drives the motors)."
+            )
+        if link_authenticated:
+            print("[BRAIN] secure_channel: HMAC envelope active (ROBOT_BRAIN_LINK_KEY)")
+        else:
+            print(
+                "[BRAIN] secure_channel: NOT configured (set ROBOT_BRAIN_LINK_KEY to "
+                "enable HMAC + replay protection)"
+            )
+        # RFC-0019: layer AES-128-CTR + ECDHE over the HMAC envelope when
+        # `ROBOT_BRAIN_ENCRYPT_LINK=1`. Raises (refuses to start) if the flag
+        # is set without a key — no silent plaintext fallback.
+        if protocol.enable_encrypt_link():
+            print(
+                "[BRAIN] secure_channel: RFC-0019 encryption ARMED "
+                "(per-connection handshake required)"
+            )
+        # B-A13 (cont.): in insecure mode the port hands motor control to
+        # whoever connects first, so keep it reachable only from this machine —
+        # the same downgrade api.py applies to its own insecure bind. Every
+        # in-repo SITL client already dials 127.0.0.1 (sitl.py
+        # DEFAULT_BRAIN_HOST, tools/sitl/sitl_wheeled.py), and QEMU user-net
+        # maps the guest's 10.0.2.2 onto the host loopback, so development
+        # flows are unaffected. A real robot on the LAN needs the link key.
+        bind_host = LINK_BIND_ANY if link_authenticated else LINK_BIND_LOOPBACK
+        server = await asyncio.start_server(self.handle_robot, bind_host, port)
+        if link_authenticated:
+            print(f"[BRAIN] Listening on {bind_host}:{port}")
+        else:
+            print(
+                f"[BRAIN] Listening on {bind_host}:{port} "
+                f"(WARNING: unauthenticated link — {ENV_ALLOW_INSECURE_LINK}=1)"
+            )
         print(f"[BRAIN] Robot type: {self.config['robot'].get('type', 'wheeled')}")
         print(f"[BRAIN] Mode: {self.mode_manager.current_name}")
         print(f"[BRAIN] VLM: {self.config['lmstudio']['vlm_model']}")

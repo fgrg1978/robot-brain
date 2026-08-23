@@ -20,7 +20,6 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass, field
 
-
 # ── Constants ────────────────────────────────────────────────────────────────
 
 MAX_FRAMES = 32
@@ -47,9 +46,11 @@ DEFAULT_GPS_OFFSET_Z_MM = 100.0
 
 # ── Data classes ─────────────────────────────────────────────────────────────
 
+
 @dataclass
 class Transform:
     """3D transform: translation (mm) + rotation (yaw only, degrees)."""
+
     x_mm: float = 0.0
     y_mm: float = 0.0
     z_mm: float = 0.0
@@ -88,8 +89,7 @@ class Transform:
             yaw_deg=-self.yaw_deg,
         )
 
-    def apply_to_point(self, x: float, y: float, z: float
-                       ) -> tuple[float, float, float]:
+    def apply_to_point(self, x: float, y: float, z: float) -> tuple[float, float, float]:
         """Apply this transform to a 3D point."""
         yaw_rad = self.yaw_deg * DEGREES_TO_RADIANS
         cos_y = math.cos(yaw_rad)
@@ -103,8 +103,9 @@ class Transform:
 @dataclass
 class Frame:
     """A named coordinate frame with a parent relationship."""
+
     name: str
-    parent: str         # parent frame name ("" = root)
+    parent: str  # parent frame name ("" = root)
     transform: Transform
 
 
@@ -142,8 +143,7 @@ class TransformTree:
             current = self._frames[current].parent
         return path
 
-    def get_transform(self, from_frame: str, to_frame: str
-                      ) -> Transform | None:
+    def get_transform(self, from_frame: str, to_frame: str) -> Transform | None:
         """Get composed transform from one frame to another.
 
         Finds the common ancestor, composes transforms up from from_frame
@@ -190,9 +190,9 @@ class TransformTree:
 
         return tf
 
-    def transform_point(self, point_mm: tuple[float, float, float],
-                        from_frame: str, to_frame: str
-                        ) -> tuple[float, float, float] | None:
+    def transform_point(
+        self, point_mm: tuple[float, float, float], from_frame: str, to_frame: str
+    ) -> tuple[float, float, float] | None:
         """Transform a 3D point between frames."""
         tf = self.get_transform(from_frame, to_frame)
         if tf is None:
@@ -220,8 +220,7 @@ class TransformTree:
             if s_type == "imu":
                 tf = Transform(z_mm=DEFAULT_IMU_OFFSET_Z_MM)
             elif s_type == "camera":
-                tf = Transform(x_mm=DEFAULT_CAMERA_OFFSET_X_MM,
-                               z_mm=DEFAULT_CAMERA_OFFSET_Z_MM)
+                tf = Transform(x_mm=DEFAULT_CAMERA_OFFSET_X_MM, z_mm=DEFAULT_CAMERA_OFFSET_Z_MM)
             elif s_type == "lidar":
                 tf = Transform(z_mm=DEFAULT_LIDAR_OFFSET_Z_MM)
             elif s_type == "rangefinder":
@@ -237,6 +236,7 @@ class TransformTree:
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
+
 
 def _sensor_frame_name(sensor_type: str, position: str) -> str:
     """Generate a frame name from sensor type and position."""

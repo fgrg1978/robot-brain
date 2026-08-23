@@ -63,11 +63,17 @@ __all__ = [
     "WORK_WIDTH",
     "WORK_HEIGHT_DEFAULT",
     "SENSITIVITY_AREA_MAP",
-    "SENSITIVITY_MIN", "SENSITIVITY_MAX", "SENSITIVITY_DEFAULT",
-    "DUST_MAX_AREA_PX", "DUST_IR_ZONE_TOP_PCT", "DUST_MAX_LIFETIME_FRAMES",
+    "SENSITIVITY_MIN",
+    "SENSITIVITY_MAX",
+    "SENSITIVITY_DEFAULT",
+    "DUST_MAX_AREA_PX",
+    "DUST_IR_ZONE_TOP_PCT",
+    "DUST_MAX_LIFETIME_FRAMES",
     "EDGE_MARGIN_PCT",
-    "MOTION_THRESHOLD_PCT", "MOTION_PIXEL_DIFF_THRESHOLD",
-    "MOTION_DOWNSAMPLE_WIDTH", "MOTION_BLUR_RADIUS",
+    "MOTION_THRESHOLD_PCT",
+    "MOTION_PIXEL_DIFF_THRESHOLD",
+    "MOTION_DOWNSAMPLE_WIDTH",
+    "MOTION_BLUR_RADIUS",
 ]
 
 # ---------------------------------------------------------------------------
@@ -81,7 +87,16 @@ SENSITIVITY_DEFAULT: int = 7
 
 ## Percentage of work-resolution frame that must be foreground at each level.
 SENSITIVITY_AREA_MAP: tuple[float, ...] = (
-    13.5, 8.5, 5.0, 3.3, 2.3, 1.55, 1.2, 0.73, 0.63, 0.50,
+    13.5,
+    8.5,
+    5.0,
+    3.3,
+    2.3,
+    1.55,
+    1.2,
+    0.73,
+    0.63,
+    0.50,
 )
 
 # ---------------------------------------------------------------------------
@@ -170,6 +185,7 @@ MOTION_BLUR_RADIUS: int = 2
 # MotionScore — richer return payload if the caller wants it.
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class MotionScore:
     """Structured output of one `feed()` call.
@@ -179,9 +195,10 @@ class MotionScore:
     `detector.last_score` for callers that want blob positions, bboxes,
     or trajectory ids.
     """
+
     score: float = 0.0
-    blobs: list[Blob] = None                  # type: ignore[assignment]
-    confirmed_tracks: list[Track] = None      # type: ignore[assignment]
+    blobs: list[Blob] = None  # type: ignore[assignment]
+    confirmed_tracks: list[Track] = None  # type: ignore[assignment]
     warmup: bool = True
 
     def __post_init__(self) -> None:
@@ -194,6 +211,7 @@ class MotionScore:
 # ---------------------------------------------------------------------------
 # MotionDetector — top-level orchestrator
 # ---------------------------------------------------------------------------
+
 
 class MotionDetector:
     """GMM-based motion detector with trajectory confirmation.
@@ -269,7 +287,7 @@ class MotionDetector:
         # First frame: initialize GMM and return 0 — we have no reference.
         if self._gmm is None:
             self._gmm = build_gmm(self._width, self._height, self._profile)
-            self._gmm.update(gray)   # seeds internal state
+            self._gmm.update(gray)  # seeds internal state
             self._prev_gray = gray
             self.last_score = MotionScore(warmup=True)
             return 0.0
@@ -292,7 +310,9 @@ class MotionDetector:
         # Main GMM pipeline.
         fg_mask = self._gmm.update(gray)
         fg_mask = morph_open(
-            fg_mask, self._width, self._height,
+            fg_mask,
+            self._width,
+            self._height,
             erode_ksize=MORPH_ERODE_KSIZE_DEFAULT,
             dilate_ksize=MORPH_DILATE_KSIZE_DEFAULT,
         )
@@ -300,7 +320,9 @@ class MotionDetector:
         min_area = self._profile.min_blob_area
         edge_margin = int(max(self._width, self._height) * EDGE_MARGIN_PCT / 100)
         blobs = detect_blobs(
-            fg_mask, self._width, self._height,
+            fg_mask,
+            self._width,
+            self._height,
             min_area=min_area,
             edge_margin_px=edge_margin,
         )
@@ -412,6 +434,7 @@ class MotionDetector:
         try:
             from PIL import Image
             import io
+
             img = Image.open(io.BytesIO(jpeg_bytes))
             img.load()
             ratio = WORK_WIDTH / max(img.width, 1)
@@ -431,6 +454,7 @@ class MotionDetector:
         try:
             from PIL import Image
             import io
+
             img = Image.open(io.BytesIO(jpeg_bytes))
             img.load()
             ratio = WORK_WIDTH / max(img.width, 1)

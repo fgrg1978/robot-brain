@@ -21,30 +21,33 @@ logger = logging.getLogger("brain.status_report")
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
-STATUS_SCAN_TIMEOUT_S = 120       # max time for full status scan
-STATUS_MAX_ZONES = 20             # don't scan more than this many zones
+STATUS_SCAN_TIMEOUT_S = 120  # max time for full status scan
+STATUS_MAX_ZONES = 20  # don't scan more than this many zones
 
 
 # ---------------------------------------------------------------------------
 # Data types
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class ZoneStatus:
     """Status of one zone from a scan."""
+
     waypoint_label: str
     zone_type: str
     x_mm: int
     y_mm: int
     vlm_description: str = ""
-    state_summary: str = ""       # short: "CLOSED", "OPEN", "CLEAR", etc.
-    photo_path: str = ""          # path to saved photo
+    state_summary: str = ""  # short: "CLOSED", "OPEN", "CLEAR", etc.
+    photo_path: str = ""  # path to saved photo
     timestamp: float = field(default_factory=time.time)
 
 
 @dataclass
 class PropertyReport:
     """Complete property status report."""
+
     zones: list[ZoneStatus] = field(default_factory=list)
     scan_time_s: float = 0.0
     timestamp: float = field(default_factory=time.time)
@@ -54,6 +57,7 @@ class PropertyReport:
 # ---------------------------------------------------------------------------
 # StatusReporter
 # ---------------------------------------------------------------------------
+
 
 class StatusReporter:
     """Generates property status reports from zone scans."""
@@ -81,14 +85,16 @@ class StatusReporter:
             if len(zones) >= STATUS_MAX_ZONES:
                 break
             summary = self._extract_state_summary(wp.last_state, wp.zone_type)
-            zones.append(ZoneStatus(
-                waypoint_label=wp.label or f"{wp.zone_type}_{wp.x_mm}",
-                zone_type=wp.zone_type,
-                x_mm=wp.x_mm,
-                y_mm=wp.y_mm,
-                vlm_description=wp.last_state,
-                state_summary=summary,
-            ))
+            zones.append(
+                ZoneStatus(
+                    waypoint_label=wp.label or f"{wp.zone_type}_{wp.x_mm}",
+                    zone_type=wp.zone_type,
+                    x_mm=wp.x_mm,
+                    y_mm=wp.y_mm,
+                    vlm_description=wp.last_state,
+                    state_summary=summary,
+                )
+            )
 
         report = PropertyReport(
             zones=zones,
@@ -116,10 +122,7 @@ class StatusReporter:
 
     def get_zone_route(self, waypoints: list[Waypoint]) -> list[Waypoint]:
         """Return only zone waypoints for a quick status scan."""
-        return [
-            wp for wp in waypoints
-            if wp.zone_type
-        ][:STATUS_MAX_ZONES]
+        return [wp for wp in waypoints if wp.zone_type][:STATUS_MAX_ZONES]
 
     # ── Internal ──────────────────────────────────────────────────────────
 
@@ -156,6 +159,7 @@ class StatusReporter:
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _zone_icon(zone_type: str) -> str:
     """Return an icon for the zone type."""

@@ -2,21 +2,36 @@
 
 import sys
 import os
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from protocol import (
-    build_packet, parse_packet, crc8,
-    SensorPacket, SensorPacketDrone, SensorPacketHumanoid,
+    build_packet,
+    parse_packet,
+    crc8,
+    SensorPacket,
+    SensorPacketDrone,
+    SensorPacketHumanoid,
     sensor_packet_from_bytes,
-    ActuatorCmd, VelocityCmd, StatusPacket,
-    SENSOR_PACKET, ACTUATOR_CMD, VELOCITY_CMD, STATUS,
-    ROBOT_WHEELED, ROBOT_DRONE, ROBOT_HUMANOID,
-    ACT_DIFF_DRIVE, ACT_QUAD_ROTOR, ACT_HUMANOID,
-    FLAG_EMERGENCY, FLAG_ALERT,
+    ActuatorCmd,
+    VelocityCmd,
+    StatusPacket,
+    SENSOR_PACKET,
+    ACTUATOR_CMD,
+    VELOCITY_CMD,
+    STATUS,
+    ROBOT_WHEELED,
+    ROBOT_DRONE,
+    ROBOT_HUMANOID,
+    ACT_DIFF_DRIVE,
+    ACT_QUAD_ROTOR,
+    ACT_HUMANOID,
+    FLAG_EMERGENCY,
+    FLAG_ALERT,
 )
 
-
 # ── Core protocol ─────────────────────────────────────────────────────────────
+
 
 def test_crc8():
     assert crc8(b"") == 0
@@ -49,6 +64,7 @@ def test_bad_crc():
 
 # ── SensorPacket (wheeled) ────────────────────────────────────────────────────
 
+
 def test_sensor_packet_roundtrip():
     sp = SensorPacket(
         timestamp_ms=123456,
@@ -73,9 +89,16 @@ def test_sensor_packet_roundtrip():
 
 def test_sensor_packet_from_bytes_dispatcher():
     sp = SensorPacket(
-        timestamp_ms=1, battery_mv=8000, accel_mg=(0, 0, 1000),
-        gyro_mdps=(0, 0, 0), odom_dist_mm=0, odom_hdg_cdeg=0,
-        encoder_l=0, encoder_r=0, range_front_mm=1000, range_right_mm=1000,
+        timestamp_ms=1,
+        battery_mv=8000,
+        accel_mg=(0, 0, 1000),
+        gyro_mdps=(0, 0, 0),
+        odom_dist_mm=0,
+        odom_hdg_cdeg=0,
+        encoder_l=0,
+        encoder_r=0,
+        range_front_mm=1000,
+        range_right_mm=1000,
     )
     data = sp.to_bytes()
     sp2 = sensor_packet_from_bytes(ROBOT_WHEELED, data)
@@ -85,12 +108,18 @@ def test_sensor_packet_from_bytes_dispatcher():
 
 # ── SensorPacketDrone ─────────────────────────────────────────────────────────
 
+
 def test_sensor_packet_drone_roundtrip():
     dp = SensorPacketDrone(
-        timestamp_ms=999, battery_mv=11100,
-        accel_mg=(10, -5, 980), gyro_mdps=(1, -2, 3),
-        baro_pa=101325, mag_ut=(200, -100, 500),
-        gps_lat_deg7=414123456, gps_lon_deg7=-2123456, gps_alt_cm=5000,
+        timestamp_ms=999,
+        battery_mv=11100,
+        accel_mg=(10, -5, 980),
+        gyro_mdps=(1, -2, 3),
+        baro_pa=101325,
+        mag_ut=(200, -100, 500),
+        gps_lat_deg7=414123456,
+        gps_lon_deg7=-2123456,
+        gps_alt_cm=5000,
         sonar_down_mm=1500,
     )
     data = dp.to_bytes()
@@ -103,12 +132,16 @@ def test_sensor_packet_drone_roundtrip():
 
 # ── SensorPacketHumanoid ──────────────────────────────────────────────────────
 
+
 def test_sensor_packet_humanoid_roundtrip():
     hp = SensorPacketHumanoid(
-        timestamp_ms=42, battery_mv=7200,
-        accel_mg=(0, 0, 1000), gyro_mdps=(10, 0, 0),
+        timestamp_ms=42,
+        battery_mv=7200,
+        accel_mg=(0, 0, 1000),
+        gyro_mdps=(10, 0, 0),
         joint_angles=[0, 0, -3000, 6000, -3000, 0, 0, 0, -3000, 6000, -3000, 0],
-        foot_pressure_l=5000, foot_pressure_r=5200,
+        foot_pressure_l=5000,
+        foot_pressure_r=5200,
     )
     data = hp.to_bytes()
     hp2 = SensorPacketHumanoid.from_bytes(data)
@@ -117,6 +150,7 @@ def test_sensor_packet_humanoid_roundtrip():
 
 
 # ── ActuatorCmd ───────────────────────────────────────────────────────────────
+
 
 def test_actuator_cmd_wheeled_roundtrip():
     cmd = ActuatorCmd.wheeled(60, -40, flags=FLAG_ALERT)
@@ -161,13 +195,30 @@ def test_actuator_cmd_size_drone():
 
 # ── VelocityCmd (backward compat) ────────────────────────────────────────────
 
-def test_velocity_cmd_roundtrip():
+
+def test_velocity_cmd_to_bytes_now_emits_actuator_format():
+    # to_bytes() now emits the ActuatorCmd kernel-compatible wire format
+    # (previously emitted a legacy i32-channel layout the kernel can't decode).
+    # The decoded round-trip therefore goes through ActuatorCmd.
+    from protocol import ActuatorCmd, ACT_DIFF_DRIVE
+
     cmd = VelocityCmd(speed_l=60, speed_r=-40, flags=0x02)
     data = cmd.to_bytes()
-    cmd2 = VelocityCmd.from_bytes(data)
-    assert cmd2.speed_l == 60
-    assert cmd2.speed_r == -40
-    assert cmd2.flags == 0x02
+    ac = ActuatorCmd.from_bytes(data)
+    assert ac.actuator_type == ACT_DIFF_DRIVE
+    assert ac.channels == [60, -40]
+    assert ac.flags == 0x02
+
+
+def test_velocity_cmd_legacy_from_bytes_still_decodes():
+    # The legacy 9-byte format can still be parsed (for old recorded logs).
+    import struct
+
+    payload = struct.pack("<iiB", 60, -40, 0x02)
+    cmd = VelocityCmd.from_bytes(payload)
+    assert cmd.speed_l == 60
+    assert cmd.speed_r == -40
+    assert cmd.flags == 0x02
 
 
 def test_velocity_cmd_to_actuator():
@@ -178,6 +229,7 @@ def test_velocity_cmd_to_actuator():
 
 
 # ── StatusPacket ──────────────────────────────────────────────────────────────
+
 
 def test_status_packet_roundtrip():
     st = StatusPacket(mode=1, tasks_ok=8, canary_ok=8, uptime_s=3600)
@@ -198,6 +250,7 @@ def test_status_packet_with_robot_type():
 def test_status_packet_legacy_7bytes():
     # Legacy 7-byte format (no robot_type) — should parse without error
     import struct
+
     data = struct.pack("<BBBI", 1, 8, 8, 3600)
     st = StatusPacket.from_bytes(data)
     assert st.mode == 1

@@ -57,7 +57,7 @@ class TestStarDetection:
         img = np.zeros((400, 400), dtype=np.uint8)
         positions = [(100, 100), (200, 200), (300, 100), (150, 300)]
         for x, y in positions:
-            img[y-2:y+3, x-2:x+3] = 255
+            img[y - 2 : y + 3, x - 2 : x + 3] = 255
         stars = detect_stars(img, max_stars=20)
         assert len(stars) >= 3  # at least most should be detected
 
@@ -73,7 +73,7 @@ class TestStarDetection:
         img = np.zeros((400, 400), dtype=np.uint8)
         for i in range(20):
             x, y = 50 + i * 15, 200
-            img[y-1:y+2, x-1:x+2] = 255
+            img[y - 1 : y + 2, x - 1 : x + 2] = 255
         stars = detect_stars(img, max_stars=5)
         assert len(stars) <= 5
 
@@ -120,8 +120,9 @@ class TestStarTracker:
         assert tracker.solve(img) is None
 
     def test_attitude_fields(self):
-        att = Attitude(ra_deg=180.0, dec_deg=45.0, roll_deg=10.0,
-                       fov_deg=30.0, n_matches=5, confidence=0.8)
+        att = Attitude(
+            ra_deg=180.0, dec_deg=45.0, roll_deg=10.0, fov_deg=30.0, n_matches=5, confidence=0.8
+        )
         assert att.ra_deg == 180.0
         assert att.dec_deg == 45.0
         assert att.n_matches == 5

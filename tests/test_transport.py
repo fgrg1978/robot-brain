@@ -2,15 +2,26 @@
 
 import asyncio
 from planner.transport import (
-    TransportManager, TransportLink, TcpLink, SerialLink, UdpLink,
-    CONNECT_TIMEOUT_S, RECONNECT_DELAY_S, LINK_HEALTH_TIMEOUT_S,
+    TransportManager,
+    TransportLink,
+    TcpLink,
+    SerialLink,
+    UdpLink,
+    CONNECT_TIMEOUT_S,
+    RECONNECT_DELAY_S,
+    LINK_HEALTH_TIMEOUT_S,
 )
 
 
 class TestConstants:
-    def test_connect_timeout(self): assert CONNECT_TIMEOUT_S > 0
-    def test_reconnect_delay(self): assert RECONNECT_DELAY_S > 0
-    def test_health_timeout(self): assert LINK_HEALTH_TIMEOUT_S > 0
+    def test_connect_timeout(self):
+        assert CONNECT_TIMEOUT_S > 0
+
+    def test_reconnect_delay(self):
+        assert RECONNECT_DELAY_S > 0
+
+    def test_health_timeout(self):
+        assert LINK_HEALTH_TIMEOUT_S > 0
 
 
 class TestTcpLink:
@@ -77,6 +88,7 @@ class TestTransportManager:
             m = TransportManager()
             result = await m.send(b"test")
             assert not result
+
         asyncio.run(_run())
 
     def test_recv_without_connection(self):
@@ -84,18 +96,21 @@ class TestTransportManager:
             m = TransportManager()
             data = await m.recv()
             assert data == b""
+
         asyncio.run(_run())
 
     def test_connect_no_links_fails(self):
         async def _run():
             m = TransportManager()
             assert not await m.connect()
+
         asyncio.run(_run())
 
     def test_disconnect_noop(self):
         async def _run():
             m = TransportManager()
             await m.disconnect()  # should not error
+
         asyncio.run(_run())
 
 
@@ -108,6 +123,7 @@ class TestLinkHealth:
 
     def test_unhealthy_stale(self):
         import time
+
         l = TcpLink("x", 1)
         l.connected = True
         l.last_recv_time = time.time() - LINK_HEALTH_TIMEOUT_S - 1

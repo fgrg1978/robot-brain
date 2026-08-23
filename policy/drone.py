@@ -11,10 +11,10 @@ NOTE: The PID attitude controller runs onboard (kernel RT task).
 from protocol import ActuatorCmd, ACT_QUAD_ROTOR, FLAG_EMERGENCY, FLAG_ALERT
 
 # PWM range: 1000 (min) - 2000 (max), 1500 = neutral
-PWM_MIN     = 1000
+PWM_MIN = 1000
 PWM_NEUTRAL = 1500
-PWM_MAX     = 2000
-PWM_DISARM  = 900   # below arm threshold
+PWM_MAX = 2000
+PWM_DISARM = 900  # below arm threshold
 
 
 class DronePolicy:
@@ -27,7 +27,9 @@ class DronePolicy:
         self.hover_throttle = hover_throttle
         self.max_tilt_deg = max_tilt_deg
 
-    def translate(self, skill: str, args: dict | None = None, sensors: dict | None = None) -> ActuatorCmd:
+    def translate(
+        self, skill: str, args: dict | None = None, sensors: dict | None = None
+    ) -> ActuatorCmd:
         """Translate a skill into quad rotor ActuatorCmd.
 
         Channels: [throttle, roll, pitch, yaw]
@@ -37,8 +39,9 @@ class DronePolicy:
 
         if s in ("EMERGENCY", "E_STOP", "KILL_MOTORS"):
             # CAUTION: only use on ground or as last resort
-            return ActuatorCmd.drone(PWM_DISARM, PWM_NEUTRAL, PWM_NEUTRAL, PWM_NEUTRAL,
-                                     flags=FLAG_EMERGENCY)
+            return ActuatorCmd.drone(
+                PWM_DISARM, PWM_NEUTRAL, PWM_NEUTRAL, PWM_NEUTRAL, flags=FLAG_EMERGENCY
+            )
 
         if s == "STOP":
             # For drone: STOP = hover, not kill motors
@@ -84,8 +87,9 @@ class DronePolicy:
             return ActuatorCmd.drone(self.hover_throttle, PWM_NEUTRAL, PWM_NEUTRAL, yaw)
 
         if s in ("SCAN_360", "ORBIT"):
-            return ActuatorCmd.drone(self.hover_throttle, PWM_NEUTRAL, PWM_NEUTRAL,
-                                     PWM_NEUTRAL + 100)
+            return ActuatorCmd.drone(
+                self.hover_throttle, PWM_NEUTRAL, PWM_NEUTRAL, PWM_NEUTRAL + 100
+            )
 
         if s == "ALERT":
             return self._hover(flags=FLAG_ALERT)
@@ -94,5 +98,6 @@ class DronePolicy:
         return self._hover()
 
     def _hover(self, flags: int = 0) -> ActuatorCmd:
-        return ActuatorCmd.drone(self.hover_throttle, PWM_NEUTRAL, PWM_NEUTRAL, PWM_NEUTRAL,
-                                  flags=flags)
+        return ActuatorCmd.drone(
+            self.hover_throttle, PWM_NEUTRAL, PWM_NEUTRAL, PWM_NEUTRAL, flags=flags
+        )

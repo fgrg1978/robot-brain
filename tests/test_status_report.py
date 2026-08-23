@@ -11,21 +11,26 @@ from planner.status_report import (
 )
 from planner.mapper import Waypoint
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _wp(x=0, y=0, label="", zone_type="", last_state=""):
     return Waypoint(
-        x_mm=x, y_mm=y, heading_cdeg=0,
-        label=label, zone_type=zone_type, last_state=last_state,
+        x_mm=x,
+        y_mm=y,
+        heading_cdeg=0,
+        label=label,
+        zone_type=zone_type,
+        last_state=last_state,
     )
 
 
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
+
 
 class TestConstants:
     def test_scan_timeout_positive(self):
@@ -39,11 +44,14 @@ class TestConstants:
 # ZoneStatus
 # ---------------------------------------------------------------------------
 
+
 class TestZoneStatus:
     def test_defaults(self):
         zs = ZoneStatus(
-            waypoint_label="puerta", zone_type="door",
-            x_mm=0, y_mm=0,
+            waypoint_label="puerta",
+            zone_type="door",
+            x_mm=0,
+            y_mm=0,
         )
         assert zs.waypoint_label == "puerta"
         assert zs.state_summary == ""
@@ -53,6 +61,7 @@ class TestZoneStatus:
 # ---------------------------------------------------------------------------
 # PropertyReport
 # ---------------------------------------------------------------------------
+
 
 class TestPropertyReport:
     def test_empty_report(self):
@@ -64,6 +73,7 @@ class TestPropertyReport:
 # ---------------------------------------------------------------------------
 # StatusReporter — build_report
 # ---------------------------------------------------------------------------
+
 
 class TestStatusReporterBuild:
     def test_empty_waypoints(self):
@@ -127,8 +137,7 @@ class TestStatusReporterBuild:
 
     def test_max_zones_limit(self):
         sr = StatusReporter()
-        wps = [_wp(x=i, zone_type="door", last_state="closed")
-               for i in range(STATUS_MAX_ZONES + 5)]
+        wps = [_wp(x=i, zone_type="door", last_state="closed") for i in range(STATUS_MAX_ZONES + 5)]
         report = sr.build_report(wps)
         assert len(report.zones) == STATUS_MAX_ZONES
 
@@ -146,6 +155,7 @@ class TestStatusReporterBuild:
 # ---------------------------------------------------------------------------
 # StatusReporter — format_text
 # ---------------------------------------------------------------------------
+
 
 class TestStatusReporterFormat:
     def test_format_empty(self):
@@ -178,6 +188,7 @@ class TestStatusReporterFormat:
 # ---------------------------------------------------------------------------
 # StatusReporter — get_zone_route
 # ---------------------------------------------------------------------------
+
 
 class TestStatusReporterRoute:
     def test_zone_route_only_zones(self):

@@ -9,28 +9,36 @@ from typing import Callable, Awaitable, Optional
 
 import protocol
 from protocol import (
-    ConfigCmd, CONFIG_CMD,
-    LED_OFF, LED_GREEN, LED_GREEN_BLINK,
-    LED_YELLOW, LED_YELLOW_BLINK,
-    LED_RED, LED_RED_BLINK, LED_RED_STROBE,
-    LED_BLUE, LED_BLUE_BLINK, LED_WHITE_FLASH,
+    ConfigCmd,
+    CONFIG_CMD,
+    LED_OFF,
+    LED_GREEN,
+    LED_GREEN_BLINK,
+    LED_YELLOW,
+    LED_YELLOW_BLINK,
+    LED_RED,
+    LED_RED_BLINK,
+    LED_RED_STROBE,
+    LED_BLUE,
+    LED_BLUE_BLINK,
+    LED_WHITE_FLASH,
 )
 
 logger = logging.getLogger("brain.led")
 
 # Map of state names to LED codes — single source of truth
 LED_STATE_MAP = {
-    "off":              LED_OFF,
-    "monitoring":       LED_GREEN,
-    "mapping":          LED_GREEN_BLINK,
-    "detecting":        LED_YELLOW,
-    "investigating":    LED_YELLOW_BLINK,
-    "confirmed":        LED_RED,
-    "tracking":         LED_RED_BLINK,
-    "panic":            LED_RED_STROBE,
-    "returning":        LED_BLUE,
-    "low_battery":      LED_BLUE_BLINK,
-    "photo":            LED_WHITE_FLASH,
+    "off": LED_OFF,
+    "monitoring": LED_GREEN,
+    "mapping": LED_GREEN_BLINK,
+    "detecting": LED_YELLOW,
+    "investigating": LED_YELLOW_BLINK,
+    "confirmed": LED_RED,
+    "tracking": LED_RED_BLINK,
+    "panic": LED_RED_STROBE,
+    "returning": LED_BLUE,
+    "low_battery": LED_BLUE_BLINK,
+    "photo": LED_WHITE_FLASH,
 }
 
 
@@ -39,7 +47,7 @@ class LedController:
 
     def __init__(self, send_packet: Callable):
         """Args:
-            send_packet: async callable(writer, pkt_type, payload)
+        send_packet: async callable(writer, pkt_type, payload)
         """
         self._send_packet = send_packet
         self._current_state: str = "off"

@@ -22,6 +22,7 @@ import numpy as np
 
 try:
     import cv2
+
     _HAS_CV2 = True
 except ImportError:
     _HAS_CV2 = False
@@ -52,6 +53,7 @@ ROBOT_ICON_HEIGHT = 120
 @dataclass
 class CameraConfig:
     """Homography mapping for one camera position."""
+
     position: str  # 'front', 'rear', 'left', 'right'
     src_points: np.ndarray  # 4 corners in the original image
     dst_points: np.ndarray  # 4 corners in the BEV canvas
@@ -94,8 +96,11 @@ class SurroundView:
     operator display.
     """
 
-    def __init__(self, configs: Optional[Dict[str, CameraConfig]] = None,
-                 output_size: Tuple[int, int] = DEFAULT_OUTPUT_SIZE):
+    def __init__(
+        self,
+        configs: Optional[Dict[str, CameraConfig]] = None,
+        output_size: Tuple[int, int] = DEFAULT_OUTPUT_SIZE,
+    ):
         if not _HAS_CV2:
             raise RuntimeError("surround_view requires opencv-python (pip install opencv-python)")
         self.configs = configs or DEFAULT_CAMERA_CONFIGS
@@ -104,12 +109,12 @@ class SurroundView:
         self._homographies: Dict[str, np.ndarray] = {}
         self._masks: Dict[str, np.ndarray] = {}
         for pos, cfg in self.configs.items():
-            self._homographies[pos] = cv2.getPerspectiveTransform(
-                cfg.src_points, cfg.dst_points)
+            self._homographies[pos] = cv2.getPerspectiveTransform(cfg.src_points, cfg.dst_points)
             self._masks[pos] = self._build_weight_mask(cfg)
 
-    def generate(self, images: Dict[str, np.ndarray],
-                 draw_robot: bool = True) -> Optional[np.ndarray]:
+    def generate(
+        self, images: Dict[str, np.ndarray], draw_robot: bool = True
+    ) -> Optional[np.ndarray]:
         """Generate bird's eye view from camera images.
 
         Args:
@@ -139,7 +144,9 @@ class SurroundView:
 
             # Warp to BEV
             warped = cv2.warpPerspective(
-                img, self._homographies[pos], self.output_size,
+                img,
+                self._homographies[pos],
+                self.output_size,
                 flags=cv2.INTER_LINEAR,
                 borderMode=cv2.BORDER_CONSTANT,
                 borderValue=(0, 0, 0),
@@ -160,26 +167,25 @@ class SurroundView:
 
     def _build_weight_mask(self, config: CameraConfig) -> np.ndarray:
         """Create a soft blending mask for one camera's BEV region."""
-        mask = np.zeros((self.output_size[1], self.output_size[0]),
-                        dtype=np.float32)
+        mask = np.zeros((self.output_size[1], self.output_size[0]), dtype=np.float32)
         pts = config.dst_points.astype(np.int32)
         cv2.fillConvexPoly(mask, pts, 1.0)
-        mask = cv2.GaussianBlur(mask, (BLEND_KERNEL_SIZE, BLEND_KERNEL_SIZE),
-                                BLEND_SIGMA)
+        mask = cv2.GaussianBlur(mask, (BLEND_KERNEL_SIZE, BLEND_KERNEL_SIZE), BLEND_SIGMA)
         return mask
 
     @staticmethod
-    def _undistort(image: np.ndarray, camera_matrix: np.ndarray,
-                   dist_coeffs: np.ndarray) -> np.ndarray:
+    def _undistort(
+        image: np.ndarray, camera_matrix: np.ndarray, dist_coeffs: np.ndarray
+    ) -> np.ndarray:
         """Remove lens distortion using calibration parameters."""
         h, w = image.shape[:2]
         new_matrix, roi = cv2.getOptimalNewCameraMatrix(
-            camera_matrix, dist_coeffs, (w, h), 1, (w, h))
-        result = cv2.undistort(image, camera_matrix, dist_coeffs,
-                               None, new_matrix)
+            camera_matrix, dist_coeffs, (w, h), 1, (w, h)
+        )
+        result = cv2.undistort(image, camera_matrix, dist_coeffs, None, new_matrix)
         x, y, w2, h2 = roi
         if w2 > 0 and h2 > 0:
-            result = result[y:y + h2, x:x + w2]
+            result = result[y : y + h2, x : x + w2]
         return result
 
     @staticmethod
@@ -207,21 +213,19 @@ class SurroundView:
         hw = ROBOT_ICON_WIDTH // 2
         hh = ROBOT_ICON_HEIGHT // 2
 
-        cv2.rectangle(image, (cx - hw, cy - hh), (cx + hw, cy + hh),
-                      (50, 50, 50), -1)
-        cv2.rectangle(image, (cx - hw, cy - hh), (cx + hw, cy + hh),
-                      (100, 100, 100), 2)
-        cv2.arrowedLine(image, (cx, cy), (cx, cy - hh + 10),
-                        (0, 200, 0), 2, tipLength=0.4)
+        cv2.rectangle(image, (cx - hw, cy - hh), (cx + hw, cy + hh), (50, 50, 50), -1)
+        cv2.rectangle(image, (cx - hw, cy - hh), (cx + hw, cy + hh), (100, 100, 100), 2)
+        cv2.arrowedLine(image, (cx, cy), (cx, cy - hh + 10), (0, 200, 0), 2, tipLength=0.4)
 
 
 # ---------------------------------------------------------------------------
 # Calibration utility
 # ---------------------------------------------------------------------------
 
-def calibrate_from_checkerboard(image: np.ndarray,
-                                pattern_size: Tuple[int, int] = (9, 6),
-                                square_size_mm: float = 25.0):
+
+def calibrate_from_checkerboard(
+    image: np.ndarray, pattern_size: Tuple[int, int] = (9, 6), square_size_mm: float = 25.0
+):
     """Calibrate a camera from a checkerboard image.
 
     Args:
@@ -244,11 +248,11 @@ def calibrate_from_checkerboard(image: np.ndarray,
     corners = cv2.cornerSubPix(gray, corners, (11, 11), (-1, -1), criteria)
 
     objp = np.zeros((pattern_size[0] * pattern_size[1], 3), np.float32)
-    objp[:, :2] = np.mgrid[0:pattern_size[0],
-                            0:pattern_size[1]].T.reshape(-1, 2)
+    objp[:, :2] = np.mgrid[0 : pattern_size[0], 0 : pattern_size[1]].T.reshape(-1, 2)
     objp *= square_size_mm
 
     ret, camera_matrix, dist_coeffs, _, _ = cv2.calibrateCamera(
-        [objp], [corners], gray.shape[::-1], None, None)
+        [objp], [corners], gray.shape[::-1], None, None
+    )
 
     return camera_matrix, dist_coeffs

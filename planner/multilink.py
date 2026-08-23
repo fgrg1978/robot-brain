@@ -40,6 +40,7 @@ MAX_LINKS = 4
 # Types
 # ---------------------------------------------------------------------------
 
+
 class LinkType(Enum):
     WIFI = "wifi"
     LORA = "lora"
@@ -57,6 +58,7 @@ class LinkState(Enum):
 @dataclass
 class TransportLink:
     """A single communication link to the robot."""
+
     name: str
     link_type: LinkType
     priority: int  # lower = higher priority (0 = primary)
@@ -78,6 +80,7 @@ class TransportLink:
 # ---------------------------------------------------------------------------
 # MultiLinkManager
 # ---------------------------------------------------------------------------
+
 
 class MultiLinkManager:
     """Manages multiple transport links with automatic failover."""
@@ -105,8 +108,9 @@ class MultiLinkManager:
         self._links.append(link)
         # Sort by priority (lower = higher priority)
         self._links.sort(key=lambda l: l.priority)
-        logger.info("Added link: %s (%s) priority=%d",
-                     link.name, link.link_type.value, link.priority)
+        logger.info(
+            "Added link: %s (%s) priority=%d", link.name, link.link_type.value, link.priority
+        )
 
     def on_heartbeat_received(self, link_name: str, latency_ms: float = 0.0):
         """Called when a heartbeat response arrives from a link."""
@@ -156,8 +160,9 @@ class MultiLinkManager:
                 if link.missed_heartbeats >= HEARTBEAT_MISS_THRESHOLD:
                     if link.state != LinkState.DOWN:
                         link.state = LinkState.DOWN
-                        logger.warning("Link %s DOWN (%d missed heartbeats)",
-                                       link.name, link.missed_heartbeats)
+                        logger.warning(
+                            "Link %s DOWN (%d missed heartbeats)", link.name, link.missed_heartbeats
+                        )
                 elif link.state == LinkState.UP:
                     link.state = LinkState.DEGRADED
 
@@ -206,9 +211,11 @@ class MultiLinkManager:
             if not link.is_alive:
                 continue
             # If this link just recovered, wait for failback delay
-            if (link.recovery_time > 0
-                    and now - link.recovery_time < self._failback_delay
-                    and i != self._active_idx):
+            if (
+                link.recovery_time > 0
+                and now - link.recovery_time < self._failback_delay
+                and i != self._active_idx
+            ):
                 continue
             return i
         return -1
@@ -218,10 +225,12 @@ class MultiLinkManager:
         links_cfg = config.get("links", [])
         for i, lc in enumerate(links_cfg[:MAX_LINKS]):
             link_type = LinkType(lc.get("type", "wifi"))
-            self.add_link(TransportLink(
-                name=lc.get("name", f"link_{i}"),
-                link_type=link_type,
-                priority=lc.get("priority", i),
-                host=lc.get("host", ""),
-                port=lc.get("port", 9000),
-            ))
+            self.add_link(
+                TransportLink(
+                    name=lc.get("name", f"link_{i}"),
+                    link_type=link_type,
+                    priority=lc.get("priority", i),
+                    host=lc.get("host", ""),
+                    port=lc.get("port", 9000),
+                )
+            )

@@ -4,9 +4,13 @@ import time
 import pytest
 
 from planner.sensors import (
-    SensorFusion, SensorTrigger,
-    SENSOR_DEBOUNCE_S, SENSOR_TRIGGER_COOLDOWN_S,
-    PIR_LABEL, SOUND_LABEL, IR_LABEL,
+    SensorFusion,
+    SensorTrigger,
+    SENSOR_DEBOUNCE_S,
+    SENSOR_TRIGGER_COOLDOWN_S,
+    PIR_LABEL,
+    SOUND_LABEL,
+    IR_LABEL,
 )
 from protocol import SENSOR_FLAG_PIR, SENSOR_FLAG_SOUND, SENSOR_FLAG_IR
 

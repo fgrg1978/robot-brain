@@ -9,12 +9,16 @@ import pytest
 
 from planner.experience import ExperienceStore
 from planner.meta import (
-    MetaReviewer, HeuristicRule, HeuristicSet,
-    MIN_RECORDS_FOR_REVIEW, REVIEW_COOLDOWN_S, MAX_RULES,
+    MetaReviewer,
+    HeuristicRule,
+    HeuristicSet,
+    MIN_RECORDS_FOR_REVIEW,
+    REVIEW_COOLDOWN_S,
+    MAX_RULES,
 )
 
-
 # ── Fixtures ─────────────────────────────────────────────────────────────────
+
 
 @pytest.fixture
 def exp_store(tmp_path):
@@ -39,9 +43,12 @@ class FakeLLMClient:
         class Choice:
             class Message:
                 content = self._response
+
             message = Message()
+
         class Resp:
             choices = [Choice()]
+
         return Resp()
 
 
@@ -71,6 +78,7 @@ def _populate_experience(store, n=10):
 
 # ── Tests ────────────────────────────────────────────────────────────────────
 
+
 def test_should_review_not_enough_records(exp_store):
     reviewer = _make_reviewer(exp_store)
     assert not reviewer.should_review()
@@ -92,22 +100,24 @@ def test_should_review_cooldown(exp_store):
 def test_review_parses_rules(exp_store):
     _populate_experience(exp_store, MIN_RECORDS_FOR_REVIEW)
 
-    llm_response = json.dumps({
-        "rules": [
-            {
-                "id": "rule_01",
-                "rule": "Always SCAN_360 before NAVIGATE_TO in unknown areas",
-                "reason": "3 out of 4 failures happened without prior scanning",
-                "confidence": 0.8,
-            },
-            {
-                "id": "rule_02",
-                "rule": "Use lower speed (30) in patrol zones with obstacles",
-                "reason": "High speed patrols had more interrupts",
-                "confidence": 0.6,
-            },
-        ]
-    })
+    llm_response = json.dumps(
+        {
+            "rules": [
+                {
+                    "id": "rule_01",
+                    "rule": "Always SCAN_360 before NAVIGATE_TO in unknown areas",
+                    "reason": "3 out of 4 failures happened without prior scanning",
+                    "confidence": 0.8,
+                },
+                {
+                    "id": "rule_02",
+                    "rule": "Use lower speed (30) in patrol zones with obstacles",
+                    "reason": "High speed patrols had more interrupts",
+                    "confidence": 0.6,
+                },
+            ]
+        }
+    )
 
     reviewer = _make_reviewer(exp_store, response=llm_response)
     rules = reviewer.review()
@@ -143,10 +153,10 @@ def test_rules_for_prompt_empty(exp_store):
 def test_rules_for_prompt_formats(exp_store):
     reviewer = _make_reviewer(exp_store)
     reviewer._heuristics.rules = [
-        HeuristicRule(id="r1", rule="Always scan first", reason="safety",
-                      confidence=0.8),
-        HeuristicRule(id="r2", rule="Low confidence rule", reason="weak",
-                      confidence=0.2),  # below threshold
+        HeuristicRule(id="r1", rule="Always scan first", reason="safety", confidence=0.8),
+        HeuristicRule(
+            id="r2", rule="Low confidence rule", reason="weak", confidence=0.2
+        ),  # below threshold
     ]
     text = reviewer.rules_for_prompt()
     assert "Always scan first" in text
@@ -155,14 +165,14 @@ def test_rules_for_prompt_formats(exp_store):
 
 def test_rules_persist_to_disk(tmp_path, exp_store):
     import planner.meta as mod
+
     old_dir = mod.HEURISTICS_DIR
     mod.HEURISTICS_DIR = str(tmp_path)
     try:
         _populate_experience(exp_store, MIN_RECORDS_FOR_REVIEW)
-        llm_response = json.dumps({
-            "rules": [{"id": "r1", "rule": "test persist", "reason": "test",
-                        "confidence": 0.9}]
-        })
+        llm_response = json.dumps(
+            {"rules": [{"id": "r1", "rule": "test persist", "reason": "test", "confidence": 0.9}]}
+        )
         reviewer = _make_reviewer(exp_store, response=llm_response)
         reviewer.review()
 
@@ -194,9 +204,9 @@ def test_rule_count_and_review_count(exp_store):
     assert reviewer.review_count == 0
 
     _populate_experience(exp_store, MIN_RECORDS_FOR_REVIEW)
-    llm_response = json.dumps({
-        "rules": [{"id": "r1", "rule": "rule one", "reason": "r", "confidence": 0.5}]
-    })
+    llm_response = json.dumps(
+        {"rules": [{"id": "r1", "rule": "rule one", "reason": "r", "confidence": 0.5}]}
+    )
     reviewer = _make_reviewer(exp_store, response=llm_response)
     reviewer.review()
     assert reviewer.rule_count == 1

@@ -27,13 +27,28 @@ from dataclasses import dataclass
 from typing import Optional, Callable, Awaitable
 
 from protocol import (
-    ConfigCmd, CONFIG_CMD,
-    LED_RED, LED_RED_STROBE, LED_YELLOW, LED_GREEN,
-    BUZZER_CONFIG_KEY, BUZZER_BEEP, BUZZER_SIREN, BUZZER_OFF,
-    SIREN_CONFIG_KEY, SPOTLIGHT_CONFIG_KEY, LASER_CONFIG_KEY,
-    SERVO_PAN_KEY, SERVO_TILT_KEY, SPEAKER_CONFIG_KEY,
-    DEVICE_OFF, DEVICE_ON, SPOTLIGHT_STROBE,
-    SPEAKER_STOP, SPEAKER_WARNING, SPEAKER_DOG_BARK,
+    ConfigCmd,
+    CONFIG_CMD,
+    LED_RED,
+    LED_RED_STROBE,
+    LED_YELLOW,
+    LED_GREEN,
+    BUZZER_CONFIG_KEY,
+    BUZZER_BEEP,
+    BUZZER_SIREN,
+    BUZZER_OFF,
+    SIREN_CONFIG_KEY,
+    SPOTLIGHT_CONFIG_KEY,
+    LASER_CONFIG_KEY,
+    SERVO_PAN_KEY,
+    SERVO_TILT_KEY,
+    SPEAKER_CONFIG_KEY,
+    DEVICE_OFF,
+    DEVICE_ON,
+    SPOTLIGHT_STROBE,
+    SPEAKER_STOP,
+    SPEAKER_WARNING,
+    SPEAKER_DOG_BARK,
 )
 
 logger = logging.getLogger("brain.deterrent")
@@ -41,36 +56,38 @@ logger = logging.getLogger("brain.deterrent")
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
-ESCALATION_STEP_S = 1.0             # seconds between escalation steps
-DEESCALATION_TIMEOUT_S = 30.0       # auto de-escalate if no threat
-DEESCALATION_CLEAR_COUNT = 3        # VLM must say CLEAR 3 times
-SIREN_MAX_DURATION_S = 120.0        # auto-off safety
-SPOTLIGHT_STROBE_HZ = 2             # strobe frequency
-ADVANCE_SPEED_PCT = 15              # slow approach toward intruder
-SECOND_NOTIFY_DELAY_S = 15.0        # delay before second notification
+ESCALATION_STEP_S = 1.0  # seconds between escalation steps
+DEESCALATION_TIMEOUT_S = 30.0  # auto de-escalate if no threat
+DEESCALATION_CLEAR_COUNT = 3  # VLM must say CLEAR 3 times
+SIREN_MAX_DURATION_S = 120.0  # auto-off safety
+SPOTLIGHT_STROBE_HZ = 2  # strobe frequency
+ADVANCE_SPEED_PCT = 15  # slow approach toward intruder
+SECOND_NOTIFY_DELAY_S = 15.0  # delay before second notification
 
 # Servo constants
-SERVO_PAN_NEUTRAL_DEG = 90          # forward-facing
-SERVO_TILT_NEUTRAL_DEG = 90         # level (remapped from 0 to servo range)
-SERVO_TILT_MIN_DEG = 60             # look down (-30° from neutral)
-SERVO_TILT_MAX_DEG = 120            # look up (+30° from neutral)
+SERVO_PAN_NEUTRAL_DEG = 90  # forward-facing
+SERVO_TILT_NEUTRAL_DEG = 90  # level (remapped from 0 to servo range)
+SERVO_TILT_MIN_DEG = 60  # look down (-30° from neutral)
+SERVO_TILT_MAX_DEG = 120  # look up (+30° from neutral)
 
 
 class DeterrentLevel(enum.IntEnum):
     """Escalation levels — each includes all previous levels."""
+
     NONE = 0
-    RECORD = 1        # LED red, start recording
-    NOTIFY = 2        # send notification with photo
-    SPOTLIGHT = 3     # spotlight strobe ON
-    SIREN = 4         # siren ON
-    WARNING = 5       # speaker: warning message
-    ADVANCE = 6       # robot moves toward intruder
-    AGGRESSIVE = 7    # dog bark + continuous siren
+    RECORD = 1  # LED red, start recording
+    NOTIFY = 2  # send notification with photo
+    SPOTLIGHT = 3  # spotlight strobe ON
+    SIREN = 4  # siren ON
+    WARNING = 5  # speaker: warning message
+    ADVANCE = 6  # robot moves toward intruder
+    AGGRESSIVE = 7  # dog bark + continuous siren
 
 
 @dataclass
 class DeterrentState:
     """Current deterrent state."""
+
     level: DeterrentLevel = DeterrentLevel.NONE
     start_time: float = 0.0
     last_escalation_time: float = 0.0
@@ -120,9 +137,7 @@ class DeterrentManager:
         logger.info("[Deterrent] STARTED — level RECORD")
 
         # Level 1: LED red
-        await self._send_config(
-            BUZZER_CONFIG_KEY, BUZZER_BEEP, writer
-        )
+        await self._send_config(BUZZER_CONFIG_KEY, BUZZER_BEEP, writer)
 
     async def escalate(self, writer=None) -> DeterrentLevel:
         """Escalate to next level. Returns new level.
@@ -184,8 +199,7 @@ class DeterrentManager:
             return False
 
         self.state.clear_count += 1
-        logger.info("[Deterrent] CLEAR %d/%d",
-                    self.state.clear_count, DEESCALATION_CLEAR_COUNT)
+        logger.info("[Deterrent] CLEAR %d/%d", self.state.clear_count, DEESCALATION_CLEAR_COUNT)
 
         if self.state.clear_count >= DEESCALATION_CLEAR_COUNT:
             await self.stand_down(writer)
@@ -203,8 +217,7 @@ class DeterrentManager:
 
         elapsed = time.monotonic() - self.state.start_time
         if elapsed >= SIREN_MAX_DURATION_S:
-            logger.info("[Deterrent] Safety timeout after %ds — standing down",
-                        int(elapsed))
+            logger.info("[Deterrent] Safety timeout after %ds — standing down", int(elapsed))
             await self.stand_down(writer)
             return True
         return False
@@ -255,8 +268,7 @@ class DeterrentManager:
         await self._send_config(SERVO_PAN_KEY, pan_deg, writer)
         await self._send_config(SERVO_TILT_KEY, tilt_deg, writer)
 
-    async def aim_from_frame(self, px_x: int, px_y: int,
-                              frame_w: int, frame_h: int, writer=None):
+    async def aim_from_frame(self, px_x: int, px_y: int, frame_w: int, frame_h: int, writer=None):
         """Convert pixel position to servo angles and aim turret.
 
         Maps frame coordinates to servo angles:
@@ -348,6 +360,8 @@ class DeterrentManager:
             hw.append("laser")
         if self.state.speaker_on:
             hw.append("speaker")
-        return (f"DeterrentManager(level={self.state.level.name}, "
-                f"hw=[{', '.join(hw)}], "
-                f"clears={self.state.clear_count}/{DEESCALATION_CLEAR_COUNT})")
+        return (
+            f"DeterrentManager(level={self.state.level.name}, "
+            f"hw=[{', '.join(hw)}], "
+            f"clears={self.state.clear_count}/{DEESCALATION_CLEAR_COUNT})"
+        )

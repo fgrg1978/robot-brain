@@ -21,14 +21,15 @@ logger = logging.getLogger("brain.change_detect")
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
-BASELINE_UPDATE_HOURS = 24        # refresh baseline daily during daytime
-FALSE_POSITIVE_THRESHOLD = 3      # mark as false positive after N sensor-only triggers
-FALSE_POSITIVE_DECAY_S = 3600     # reset false positive counter after 1 hour
+BASELINE_UPDATE_HOURS = 24  # refresh baseline daily during daytime
+FALSE_POSITIVE_THRESHOLD = 3  # mark as false positive after N sensor-only triggers
+FALSE_POSITIVE_DECAY_S = 3600  # reset false positive counter after 1 hour
 
 
 # ---------------------------------------------------------------------------
 # Types
 # ---------------------------------------------------------------------------
+
 
 class ChangeType(Enum):
     UNCHANGED = "unchanged"
@@ -43,7 +44,7 @@ class ChangeResult:
     changed: bool
     change_type: ChangeType = ChangeType.UNCHANGED
     description: str = ""
-    confidence: float = 0.0     # 0-1, how certain the change is
+    confidence: float = 0.0  # 0-1, how certain the change is
 
 
 @dataclass
@@ -64,6 +65,7 @@ class FalsePositiveRecord:
 # ---------------------------------------------------------------------------
 # ChangeDetector
 # ---------------------------------------------------------------------------
+
 
 class ChangeDetector:
     """Compares current observations against baselines for change detection."""
@@ -135,8 +137,10 @@ class ChangeDetector:
 
         # Check for state changes (open/closed, on/off)
         state_pairs = [
-            ("open", "closed"), ("on", "off"),
-            ("locked", "unlocked"), ("present", "absent"),
+            ("open", "closed"),
+            ("on", "off"),
+            ("locked", "unlocked"),
+            ("present", "absent"),
         ]
         for state_a, state_b in state_pairs:
             base_a = state_a in base_lower
@@ -206,9 +210,9 @@ class ChangeDetector:
         if rec.trigger_count >= FALSE_POSITIVE_THRESHOLD:
             rec.suppressed = True
             logger.info(
-                "[ChangeDetect] Zone '%s' marked as false positive "
-                "(%d sensor-only triggers)",
-                zone_id, rec.trigger_count,
+                "[ChangeDetect] Zone '%s' marked as false positive " "(%d sensor-only triggers)",
+                zone_id,
+                rec.trigger_count,
             )
 
     def is_false_positive_zone(self, zone_id: str) -> bool:
@@ -230,7 +234,4 @@ class ChangeDetector:
 
     def false_positive_zones(self) -> list[str]:
         """Return list of zones currently flagged as false positive."""
-        return [
-            zone_id for zone_id, rec in self._false_positives.items()
-            if rec.suppressed
-        ]
+        return [zone_id for zone_id, rec in self._false_positives.items() if rec.suppressed]

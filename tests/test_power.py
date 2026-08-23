@@ -5,13 +5,25 @@ import time
 import pytest
 
 from planner.power import (
-    PowerManager, PowerMode, PowerState,
-    PATROL_SPEED_ECO_PCT, PATROL_SPEED_ALERT_PCT,
-    LIDAR_HZ_ECO, LIDAR_HZ_ALERT,
-    ALERT_TIMEOUT_S, ALERT_CLEAR_COUNT,
-    POWER_CONFIG_KEY, CAMERA_POWER_KEY, WIFI_MODE_KEY, LIDAR_HZ_KEY,
-    POWER_ECO, POWER_ALERT, CAMERA_ON, CAMERA_OFF,
-    WIFI_BATCH, WIFI_CONTINUOUS,
+    PowerManager,
+    PowerMode,
+    PowerState,
+    PATROL_SPEED_ECO_PCT,
+    PATROL_SPEED_ALERT_PCT,
+    LIDAR_HZ_ECO,
+    LIDAR_HZ_ALERT,
+    ALERT_TIMEOUT_S,
+    ALERT_CLEAR_COUNT,
+    POWER_CONFIG_KEY,
+    CAMERA_POWER_KEY,
+    WIFI_MODE_KEY,
+    LIDAR_HZ_KEY,
+    POWER_ECO,
+    POWER_ALERT,
+    CAMERA_ON,
+    CAMERA_OFF,
+    WIFI_BATCH,
+    WIFI_CONTINUOUS,
 )
 from protocol import ConfigCmd, CONFIG_CMD
 

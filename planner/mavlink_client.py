@@ -26,10 +26,10 @@ logger = logging.getLogger("brain.mavlink")
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
-MAVLINK_SYSTEM_ID = 255            # GCS system ID
-MAVLINK_COMPONENT_ID = 0          # GCS component
-MAVLINK_TARGET_SYSTEM = 1         # autopilot system ID
-MAVLINK_TARGET_COMPONENT = 1      # autopilot component
+MAVLINK_SYSTEM_ID = 255  # GCS system ID
+MAVLINK_COMPONENT_ID = 0  # GCS component
+MAVLINK_TARGET_SYSTEM = 1  # autopilot system ID
+MAVLINK_TARGET_COMPONENT = 1  # autopilot component
 
 # MAVLink command IDs (subset)
 MAV_CMD_NAV_TAKEOFF = 22
@@ -57,6 +57,7 @@ TELEMETRY_TIMEOUT_S = 5.0
 @dataclass
 class MavTelemetry:
     """Latest telemetry from the autopilot."""
+
     lat: float = 0.0
     lon: float = 0.0
     alt_m: float = 0.0
@@ -96,7 +97,7 @@ class MavlinkClient:
         self._conn_str = connection_string
         self._baud = baud
         self._source_system = source_system
-        self._mavlink = None        # pymavlink connection (lazy import)
+        self._mavlink = None  # pymavlink connection (lazy import)
         self._telemetry = MavTelemetry()
         self._connected = False
         self._recv_task: Optional[asyncio.Task] = None
@@ -115,14 +116,17 @@ class MavlinkClient:
         """Connect to autopilot via pymavlink."""
         try:
             from pymavlink import mavutil
+
             self._mavlink = mavutil.mavlink_connection(
-                self._conn_str, baud=self._baud,
+                self._conn_str,
+                baud=self._baud,
                 source_system=self._source_system,
             )
             # Wait for heartbeat
             logger.info("[MAVLink] Waiting for heartbeat on %s...", self._conn_str)
             hb = await asyncio.to_thread(
-                self._mavlink.wait_heartbeat, timeout=10,
+                self._mavlink.wait_heartbeat,
+                timeout=10,
             )
             if hb:
                 self._connected = True
@@ -159,20 +163,23 @@ class MavlinkClient:
     async def arm(self) -> bool:
         """Arm motors."""
         return await self._send_command_long(
-            MAV_CMD_COMPONENT_ARM_DISARM, param1=1,
+            MAV_CMD_COMPONENT_ARM_DISARM,
+            param1=1,
         )
 
     async def disarm(self) -> bool:
         """Disarm motors."""
         return await self._send_command_long(
-            MAV_CMD_COMPONENT_ARM_DISARM, param1=0,
+            MAV_CMD_COMPONENT_ARM_DISARM,
+            param1=0,
         )
 
     async def takeoff(self, alt_m: float = 10.0) -> bool:
         """Take off to altitude."""
         logger.info("[MAVLink] Takeoff to %.1fm", alt_m)
         return await self._send_command_long(
-            MAV_CMD_NAV_TAKEOFF, param7=alt_m,
+            MAV_CMD_NAV_TAKEOFF,
+            param7=alt_m,
         )
 
     async def land(self) -> bool:
@@ -186,15 +193,23 @@ class MavlinkClient:
         return await self._send_command_long(MAV_CMD_NAV_RETURN_TO_LAUNCH)
 
     async def goto(
-        self, lat: float, lon: float, alt_m: float = 10.0,
+        self,
+        lat: float,
+        lon: float,
+        alt_m: float = 10.0,
     ) -> bool:
         """Navigate to GPS coordinate."""
         logger.info(
-            "[MAVLink] GoTo (%.6f, %.6f) alt=%.1fm", lat, lon, alt_m,
+            "[MAVLink] GoTo (%.6f, %.6f) alt=%.1fm",
+            lat,
+            lon,
+            alt_m,
         )
         return await self._send_command_long(
             MAV_CMD_NAV_WAYPOINT,
-            param5=lat, param6=lon, param7=alt_m,
+            param5=lat,
+            param6=lon,
+            param7=alt_m,
         )
 
     # ── Skill translation ─────────────────────────────────────────────────
@@ -227,9 +242,14 @@ class MavlinkClient:
     # ── Internal ──────────────────────────────────────────────────────────
 
     async def _send_command_long(
-        self, command: int,
-        param1: float = 0, param2: float = 0, param3: float = 0,
-        param4: float = 0, param5: float = 0, param6: float = 0,
+        self,
+        command: int,
+        param1: float = 0,
+        param2: float = 0,
+        param3: float = 0,
+        param4: float = 0,
+        param5: float = 0,
+        param6: float = 0,
         param7: float = 0,
     ) -> bool:
         """Send a COMMAND_LONG message."""
@@ -242,8 +262,13 @@ class MavlinkClient:
                 MAVLINK_TARGET_COMPONENT,
                 command,
                 0,  # confirmation
-                param1, param2, param3, param4,
-                param5, param6, param7,
+                param1,
+                param2,
+                param3,
+                param4,
+                param5,
+                param6,
+                param7,
             )
             return True
         except Exception as e:
@@ -255,7 +280,9 @@ class MavlinkClient:
         while self._connected:
             try:
                 msg = await asyncio.to_thread(
-                    self._mavlink.recv_match, blocking=True, timeout=1,
+                    self._mavlink.recv_match,
+                    blocking=True,
+                    timeout=1,
                 )
                 if msg is None:
                     continue
@@ -336,8 +363,7 @@ class MavlinkClient:
         """
         t = self._telemetry
         if t.armed and t.alt_m > 2.0:
-            logger.warning("[MAVLink] Brain disconnect — triggering RTL (alt=%.1fm)",
-                           t.alt_m)
+            logger.warning("[MAVLink] Brain disconnect — triggering RTL (alt=%.1fm)", t.alt_m)
             await self.rtl()
         elif t.armed:
             logger.warning("[MAVLink] Brain disconnect — disarming (on ground)")

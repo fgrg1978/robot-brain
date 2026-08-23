@@ -25,28 +25,37 @@ logger = logging.getLogger("brain.zones")
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
-ZONE_SCAN_EVERY_N_PASSES = 1     # zones scanned every pass (vs normal every N)
-NORMAL_SCAN_EVERY_N_PASSES = 3   # normal waypoints scanned every 3rd pass
-ZONE_DWELL_EXTRA_S = 2.0         # extra dwell time at zones (on top of patrol default)
+ZONE_SCAN_EVERY_N_PASSES = 1  # zones scanned every pass (vs normal every N)
+NORMAL_SCAN_EVERY_N_PASSES = 3  # normal waypoints scanned every 3rd pass
+ZONE_DWELL_EXTRA_S = 2.0  # extra dwell time at zones (on top of patrol default)
 
 # Zone types recognized by VLM tagging (ordered: more specific first)
 ZONE_TYPES = [
-    "open_area", "driveway", "garage", "entrance", "exit",
-    "window", "stairs", "fence", "gate", "door",
+    "open_area",
+    "driveway",
+    "garage",
+    "entrance",
+    "exit",
+    "window",
+    "stairs",
+    "fence",
+    "gate",
+    "door",
 ]
 
 # Zone types that get highest priority (entry points)
 HIGH_PRIORITY_ZONES = {"door", "window", "gate", "entrance", "garage"}
 
 # Zone priority levels
-ZONE_PRIORITY_HIGH = 2           # entry points — scan every pass
-ZONE_PRIORITY_NORMAL = 1         # other zones — scan every pass but less dwell
-ZONE_PRIORITY_DEFAULT = 0        # non-zone waypoints — scan every N passes
+ZONE_PRIORITY_HIGH = 2  # entry points — scan every pass
+ZONE_PRIORITY_NORMAL = 1  # other zones — scan every pass but less dwell
+ZONE_PRIORITY_DEFAULT = 0  # non-zone waypoints — scan every N passes
 
 
 # ---------------------------------------------------------------------------
 # ZoneManager
 # ---------------------------------------------------------------------------
+
 
 class ZoneManager:
     """Manages zones of interest: tagging, priority scanning, state change detection."""
@@ -77,14 +86,16 @@ class ZoneManager:
         if detected_type:
             wp.zone_type = detected_type
             wp.zone_priority = (
-                ZONE_PRIORITY_HIGH if detected_type in HIGH_PRIORITY_ZONES
-                else ZONE_PRIORITY_NORMAL
+                ZONE_PRIORITY_HIGH if detected_type in HIGH_PRIORITY_ZONES else ZONE_PRIORITY_NORMAL
             )
             wp.last_state = vlm_description
             self._record_state(wp, vlm_description)
             logger.info(
                 "[Zones] Tagged waypoint (%d,%d) as '%s' (priority %d)",
-                wp.x_mm, wp.y_mm, detected_type, wp.zone_priority,
+                wp.x_mm,
+                wp.y_mm,
+                detected_type,
+                wp.zone_priority,
             )
 
         return detected_type
@@ -157,19 +168,19 @@ class ZoneManager:
         return [wp for wp in waypoints if wp.zone_type]
 
     def get_zones_by_type(
-        self, waypoints: list[Waypoint], zone_type: str,
+        self,
+        waypoints: list[Waypoint],
+        zone_type: str,
     ) -> list[Waypoint]:
         """Return waypoints matching a specific zone type."""
         return [wp for wp in waypoints if wp.zone_type == zone_type]
 
     def get_high_priority_zones(
-        self, waypoints: list[Waypoint],
+        self,
+        waypoints: list[Waypoint],
     ) -> list[Waypoint]:
         """Return only high-priority zones (entry points)."""
-        return [
-            wp for wp in waypoints
-            if wp.zone_priority >= ZONE_PRIORITY_HIGH
-        ]
+        return [wp for wp in waypoints if wp.zone_priority >= ZONE_PRIORITY_HIGH]
 
     def zone_summary(self, waypoints: list[Waypoint]) -> dict[str, int]:
         """Count zones by type."""
@@ -225,7 +236,7 @@ class ZoneManager:
         """Truncate description for logging."""
         if len(description) <= max_len:
             return description
-        return description[:max_len - 3] + "..."
+        return description[: max_len - 3] + "..."
 
     @staticmethod
     def _wp_key(wp: Waypoint) -> str:

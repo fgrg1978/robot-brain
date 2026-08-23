@@ -20,14 +20,14 @@ logger = logging.getLogger("brain.patrol")
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
-PATROL_SCAN_DWELL_S = 3.0          # seconds to dwell at waypoint for VLM scan
-PATROL_WAYPOINT_REACH_MM = 300     # close enough to consider waypoint reached
+PATROL_SCAN_DWELL_S = 3.0  # seconds to dwell at waypoint for VLM scan
+PATROL_WAYPOINT_REACH_MM = 300  # close enough to consider waypoint reached
 PATROL_HEADING_TOLERANCE_CDEG = 1500  # 15° tolerance for heading alignment
-PATROL_NAV_STEP_HZ = 10           # navigation update rate
-PATROL_DEFAULT_SPEED_PCT = 40     # default patrol motor speed
-PATROL_TURN_SPEED_PCT = 25        # turn-in-place speed
-PATROL_STEER_KP = 0.5             # proportional gain for heading correction
-PATROL_MAX_STEER = 50             # max differential steer (-50..+50)
+PATROL_NAV_STEP_HZ = 10  # navigation update rate
+PATROL_DEFAULT_SPEED_PCT = 40  # default patrol motor speed
+PATROL_TURN_SPEED_PCT = 25  # turn-in-place speed
+PATROL_STEER_KP = 0.5  # proportional gain for heading correction
+PATROL_MAX_STEER = 50  # max differential steer (-50..+50)
 
 
 class PatrolState(enum.Enum):
@@ -47,10 +47,11 @@ class PatrolController:
         slam: SLAM,
         path_planner: PathPlanner,
         mapper: PerimeterMapper,
-        send_cmd: Callable,       # async (ActuatorCmd) -> None
-        policy,                   # WheeledPolicy
+        send_cmd: Callable,  # async (ActuatorCmd) -> None
+        policy,  # WheeledPolicy
         on_waypoint_reached: Optional[Callable[[Waypoint, int], Awaitable[None]]] = None,
         on_detection: Optional[Callable[[str, bytes], Awaitable[None]]] = None,
+        is_connected: Optional[Callable[[], bool]] = None,
     ):
         self._slam = slam
         self._planner = path_planner
@@ -59,6 +60,12 @@ class PatrolController:
         self._policy = policy
         self._on_waypoint_reached = on_waypoint_reached
         self._on_detection = on_detection
+        # Optional liveness probe (BrainServer.state.connected). Without it
+        # the navigation loop below has no way to notice the robot dropped
+        # the TCP connection mid-nav and will otherwise spin forever calling
+        # send_cmd() into the void. None keeps the class usable standalone
+        # (e.g. in tests) — the check is simply skipped in that case.
+        self._is_connected = is_connected
 
         self.state = PatrolState.IDLE
         self._stop_event = asyncio.Event()
@@ -149,8 +156,7 @@ class PatrolController:
             )
 
             # navigate to frontier
-            wp = Waypoint(x_mm=int(nearest[0]), y_mm=int(nearest[1]),
-                          heading_cdeg=int(pose[2]))
+            wp = Waypoint(x_mm=int(nearest[0]), y_mm=int(nearest[1]), heading_cdeg=int(pose[2]))
             reached = await self._navigate_to(wp)
             if not reached:
                 continue
@@ -164,60 +170,93 @@ class PatrolController:
         cmd = self._policy.translate("STOP")
         await self._send_cmd(cmd)
         self.state = PatrolState.DONE
-        logger.info("[Patrol] Mapping complete, %d waypoints recorded",
-                    len(self._mapper.waypoints))
+        logger.info("[Patrol] Mapping complete, %d waypoints recorded", len(self._mapper.waypoints))
 
     # ------------------------------------------------------------------
     # Navigation
     # ------------------------------------------------------------------
 
-    async def _navigate_to(self, wp: Waypoint) -> bool:
-        """Navigate to a waypoint using path planner. Returns True if reached."""
-        pose = self._slam.get_pose()
-        path = self._planner.plan(pose[0], pose[1], wp.x_mm, wp.y_mm)
-
-        if not path:
-            logger.warning("[Patrol] No path to (%d, %d)", wp.x_mm, wp.y_mm)
+    def _should_continue(self) -> bool:
+        """False once patrol should stop: interrupted, or (when wired) the
+        robot's TCP connection dropped mid-navigation."""
+        if self._stop_event.is_set():
             return False
+        if self._is_connected is not None and not self._is_connected():
+            return False
+        return True
 
-        interval = 1.0 / PATROL_NAV_STEP_HZ
+    async def _navigate_to(self, wp: Waypoint) -> bool:
+        """Navigate to a waypoint using path planner. Returns True if reached.
 
-        for target_x, target_y in path[1:]:  # skip start
-            if self._stop_event.is_set():
+        Always sends STOP on the way out (finally) — normal completion,
+        early return (interrupted/disconnected/unreachable), or the caller
+        cancelling us via `asyncio.wait_for(..., timeout=...)` must not
+        leave the robot still executing the last NAVIGATE_PATH command.
+        """
+        try:
+            pose = self._slam.get_pose()
+            path = self._planner.plan(pose[0], pose[1], wp.x_mm, wp.y_mm)
+
+            if not path:
+                logger.warning("[Patrol] No path to (%d, %d)", wp.x_mm, wp.y_mm)
                 return False
 
-            # drive toward target point
-            while not self._stop_event.is_set():
-                pose = self._slam.get_pose()
-                dx = target_x - pose[0]
-                dy = target_y - pose[1]
-                dist = math.hypot(dx, dy)
+            interval = 1.0 / PATROL_NAV_STEP_HZ
 
-                if dist < PATROL_WAYPOINT_REACH_MM:
-                    break  # reached this path point
+            for target_x, target_y in path[1:]:  # skip start
+                if not self._should_continue():
+                    return False
 
-                # desired heading
-                desired_cdeg = math.atan2(dy, dx) / CDEG_TO_RAD
-                heading_err = self._wrap_cdeg(desired_cdeg - pose[2])
+                # drive toward target point
+                while self._should_continue():
+                    pose = self._slam.get_pose()
+                    dx = target_x - pose[0]
+                    dy = target_y - pose[1]
+                    dist = math.hypot(dx, dy)
 
-                # if heading error too large, turn in place first
-                if abs(heading_err) > PATROL_HEADING_TOLERANCE_CDEG:
-                    steer = PATROL_TURN_SPEED_PCT if heading_err > 0 else -PATROL_TURN_SPEED_PCT
-                    cmd = self._policy.translate("NAVIGATE_PATH", {
-                        "speed": 0, "steer": steer,
-                    })
+                    if dist < PATROL_WAYPOINT_REACH_MM:
+                        break  # reached this path point
+
+                    # desired heading
+                    desired_cdeg = math.atan2(dy, dx) / CDEG_TO_RAD
+                    heading_err = self._wrap_cdeg(desired_cdeg - pose[2])
+
+                    # if heading error too large, turn in place first
+                    if abs(heading_err) > PATROL_HEADING_TOLERANCE_CDEG:
+                        steer = PATROL_TURN_SPEED_PCT if heading_err > 0 else -PATROL_TURN_SPEED_PCT
+                        cmd = self._policy.translate(
+                            "NAVIGATE_PATH",
+                            {
+                                "speed": 0,
+                                "steer": steer,
+                            },
+                        )
+                    else:
+                        # proportional steering
+                        steer = int(heading_err * PATROL_STEER_KP / 100)
+                        steer = max(-PATROL_MAX_STEER, min(PATROL_MAX_STEER, steer))
+                        cmd = self._policy.translate(
+                            "NAVIGATE_PATH",
+                            {
+                                "speed": PATROL_DEFAULT_SPEED_PCT,
+                                "steer": steer,
+                            },
+                        )
+
+                    await self._send_cmd(cmd)
+                    await asyncio.sleep(interval)
                 else:
-                    # proportional steering
-                    steer = int(heading_err * PATROL_STEER_KP / 100)
-                    steer = max(-PATROL_MAX_STEER, min(PATROL_MAX_STEER, steer))
-                    cmd = self._policy.translate("NAVIGATE_PATH", {
-                        "speed": PATROL_DEFAULT_SPEED_PCT, "steer": steer,
-                    })
+                    # Inner while exited via _should_continue() going False
+                    # (interrupted/disconnected), not via the "reached" break.
+                    return False
 
+            return True
+        finally:
+            try:
+                cmd = self._policy.translate("STOP")
                 await self._send_cmd(cmd)
-                await asyncio.sleep(interval)
-
-        return True
+            except Exception:
+                logger.exception("[Patrol] failed to send STOP in _navigate_to")
 
     async def _rotate_360(self):
         """Rotate 360° in place for scanning."""
@@ -236,7 +275,9 @@ class PatrolController:
 
     def feed_sensors(
         self,
-        odom_dx_mm: float, odom_dy_mm: float, odom_dtheta_cdeg: float,
+        odom_dx_mm: float,
+        odom_dy_mm: float,
+        odom_dtheta_cdeg: float,
         scan_points: list[tuple[int, int]],
     ):
         """Feed odometry + LiDAR to SLAM (and mapper if mapping)."""
@@ -279,5 +320,7 @@ class PatrolController:
         return self._patrol_count
 
     def __repr__(self) -> str:
-        return (f"PatrolController(state={self.state.value}, "
-                f"wp={self._current_wp_idx}, laps={self._patrol_count})")
+        return (
+            f"PatrolController(state={self.state.value}, "
+            f"wp={self._current_wp_idx}, laps={self._patrol_count})"
+        )

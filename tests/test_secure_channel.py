@@ -3,14 +3,24 @@
 import os
 import secrets
 from secure_channel import (
-    Sender, Receiver, ENVELOPE_OVERHEAD, KEY_BYTES, MAX_INNER_BYTES,
+    DIR_S2C,
+    Sender,
+    Receiver,
+    ENVELOPE_OVERHEAD,
+    KEY_BYTES,
+    MAX_INNER_BYTES,
     load_link_key,
 )
 
 
 def _new_pair():
     key = secrets.token_bytes(KEY_BYTES)
-    return Sender(key), Receiver(key), key
+    # The Sender here stands in for the KERNEL: direction binding means a
+    # frame is only valid in the direction it was minted for, so a Sender
+    # built with the brain's own default (C2S) would — correctly — be
+    # rejected by the brain's Receiver. Passing DIR_S2C models the real
+    # kernel->brain path, which is what these tests are about.
+    return Sender(key, direction=DIR_S2C), Receiver(key), key
 
 
 def test_round_trip_inner_recovered():
@@ -79,7 +89,7 @@ def test_oversize_inner_refused_at_send():
 def test_distinct_keys_dont_communicate():
     a_key = secrets.token_bytes(KEY_BYTES)
     b_key = secrets.token_bytes(KEY_BYTES)
-    s = Sender(a_key)
+    s = Sender(a_key, direction=DIR_S2C)
     r = Receiver(b_key)
     assert r.unwrap(s.wrap(b"hello")) is None
 

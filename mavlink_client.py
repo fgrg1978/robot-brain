@@ -37,17 +37,17 @@ logger = logging.getLogger("brain.mavlink")
 # ---------------------------------------------------------------------------
 # MAVLink v1 wire-format constants  — NO MAGIC NUMBERS in callers.
 # ---------------------------------------------------------------------------
-MAVLINK_V1_STX = 0xFE                    # v1.0 start-of-frame byte
-MAVLINK_HEADER_LEN = 6                    # stx + len + seq + sys + comp + msgid
-MAVLINK_CHECKSUM_LEN = 2                  # CRC-16/X.25 trailer
-MAVLINK_MAX_PAYLOAD = 255                 # v1 payload length field is u8
+MAVLINK_V1_STX = 0xFE  # v1.0 start-of-frame byte
+MAVLINK_HEADER_LEN = 6  # stx + len + seq + sys + comp + msgid
+MAVLINK_CHECKSUM_LEN = 2  # CRC-16/X.25 trailer
+MAVLINK_MAX_PAYLOAD = 255  # v1 payload length field is u8
 MAVLINK_MIN_FRAME_LEN = MAVLINK_HEADER_LEN + MAVLINK_CHECKSUM_LEN
 
 # GCS identity (we are the brain, not the autopilot)
-MAVLINK_SYSTEM_ID = 255                  # conventional GCS system ID
-MAVLINK_COMPONENT_ID = 190               # MAV_COMP_ID_MISSIONPLANNER
-MAVLINK_TARGET_SYSTEM = 1                # autopilot default sysid
-MAVLINK_TARGET_COMPONENT = 1             # autopilot default compid
+MAVLINK_SYSTEM_ID = 255  # conventional GCS system ID
+MAVLINK_COMPONENT_ID = 190  # MAV_COMP_ID_MISSIONPLANNER
+MAVLINK_TARGET_SYSTEM = 1  # autopilot default sysid
+MAVLINK_TARGET_COMPONENT = 1  # autopilot default compid
 
 # ---------------------------------------------------------------------------
 # MAVLink message IDs (subset we care about)
@@ -119,8 +119,8 @@ ARM_DISARM_DISARM = 0
 # ---------------------------------------------------------------------------
 # Timing constants
 # ---------------------------------------------------------------------------
-HEARTBEAT_INTERVAL_S = 1.0               # spec: GCS must heartbeat >=1 Hz
-TELEMETRY_TIMEOUT_S = 5.0                # link considered dead after this
+HEARTBEAT_INTERVAL_S = 1.0  # spec: GCS must heartbeat >=1 Hz
+TELEMETRY_TIMEOUT_S = 5.0  # link considered dead after this
 DEFAULT_UDP_URL = "udp://127.0.0.1:14540"  # PX4 SITL default GCS port
 DEFAULT_CONNECT_TIMEOUT_S = 10.0
 DEFAULT_RECV_POLL_S = 0.05
@@ -160,6 +160,7 @@ def mavlink_crc_accumulate(data: bytes, crc: int = MAVLINK_CRC_INIT) -> int:
 @dataclass
 class MavTelemetry:
     """Latest telemetry from the autopilot."""
+
     lat: float = 0.0
     lon: float = 0.0
     alt_m: float = 0.0
@@ -187,6 +188,7 @@ class MavTelemetry:
 @dataclass
 class MavlinkFrame:
     """Decoded MAVLink v1 frame."""
+
     seq: int
     sysid: int
     compid: int
@@ -197,9 +199,13 @@ class MavlinkFrame:
 # ---------------------------------------------------------------------------
 # Wire encode / decode (MAVLink v1)
 # ---------------------------------------------------------------------------
-def encode_mavlink_v1(msgid: int, payload: bytes, seq: int,
-                      sysid: int = MAVLINK_SYSTEM_ID,
-                      compid: int = MAVLINK_COMPONENT_ID) -> bytes:
+def encode_mavlink_v1(
+    msgid: int,
+    payload: bytes,
+    seq: int,
+    sysid: int = MAVLINK_SYSTEM_ID,
+    compid: int = MAVLINK_COMPONENT_ID,
+) -> bytes:
     """Serialise a MAVLink v1 frame (STX + header + payload + CRC)."""
     if msgid not in MAVLINK_CRC_EXTRA:
         raise ValueError(f"unknown msgid {msgid}")
@@ -247,17 +253,17 @@ def decode_mavlink_v1(buf: bytes) -> Optional[MavlinkFrame]:
     msgid = buf[5]
     if msgid not in MAVLINK_CRC_EXTRA:
         return None
-    payload = buf[MAVLINK_HEADER_LEN:MAVLINK_HEADER_LEN + plen]
+    payload = buf[MAVLINK_HEADER_LEN : MAVLINK_HEADER_LEN + plen]
     crc_wire = struct.unpack(
-        "<H", buf[MAVLINK_HEADER_LEN + plen:total],
+        "<H",
+        buf[MAVLINK_HEADER_LEN + plen : total],
     )[0]
     crc = mavlink_crc_accumulate(buf[1:MAVLINK_HEADER_LEN])
     crc = mavlink_crc_accumulate(payload, crc)
     crc = mavlink_crc_accumulate(bytes([MAVLINK_CRC_EXTRA[msgid]]), crc)
     if crc != crc_wire:
         return None
-    return MavlinkFrame(seq=seq, sysid=sysid, compid=compid,
-                        msgid=msgid, payload=payload)
+    return MavlinkFrame(seq=seq, sysid=sysid, compid=compid, msgid=msgid, payload=payload)
 
 
 def encode_heartbeat(seq: int = 0) -> bytes:
@@ -276,20 +282,31 @@ def encode_heartbeat(seq: int = 0) -> bytes:
     return encode_mavlink_v1(MAVLINK_MSG_ID_HEARTBEAT, payload, seq)
 
 
-def encode_command_long(command: int,
-                        param1: float = 0.0, param2: float = 0.0,
-                        param3: float = 0.0, param4: float = 0.0,
-                        param5: float = 0.0, param6: float = 0.0,
-                        param7: float = 0.0,
-                        confirmation: int = 0,
-                        target_system: int = MAVLINK_TARGET_SYSTEM,
-                        target_component: int = MAVLINK_TARGET_COMPONENT,
-                        seq: int = 0) -> bytes:
+def encode_command_long(
+    command: int,
+    param1: float = 0.0,
+    param2: float = 0.0,
+    param3: float = 0.0,
+    param4: float = 0.0,
+    param5: float = 0.0,
+    param6: float = 0.0,
+    param7: float = 0.0,
+    confirmation: int = 0,
+    target_system: int = MAVLINK_TARGET_SYSTEM,
+    target_component: int = MAVLINK_TARGET_COMPONENT,
+    seq: int = 0,
+) -> bytes:
     """Encode a COMMAND_LONG (#76) as a MAVLink v1 frame."""
     # 7x float + u16 command + u8 target_sys + u8 target_comp + u8 confirmation
     payload = struct.pack(
         "<fffffffHBBB",
-        param1, param2, param3, param4, param5, param6, param7,
+        param1,
+        param2,
+        param3,
+        param4,
+        param5,
+        param6,
+        param7,
         command & 0xFFFF,
         target_system & 0xFF,
         target_component & 0xFF,
@@ -299,8 +316,9 @@ def encode_command_long(command: int,
 
 
 def parse_heartbeat(payload: bytes) -> dict:
-    custom_mode, mav_type, autopilot, base_mode, system_status, _ver = \
-        struct.unpack("<IBBBBB", payload[:9])
+    custom_mode, mav_type, autopilot, base_mode, system_status, _ver = struct.unpack(
+        "<IBBBBB", payload[:9]
+    )
     return {
         "custom_mode": custom_mode,
         "type": mav_type,
@@ -314,8 +332,7 @@ def parse_heartbeat(payload: bytes) -> dict:
 def parse_global_position_int(payload: bytes) -> dict:
     # time_boot_ms(u32) lat(i32) lon(i32) alt(i32) relative_alt(i32)
     # vx(i16) vy(i16) vz(i16) hdg(u16)
-    (time_ms, lat, lon, alt, rel_alt, vx, vy, vz, hdg) = \
-        struct.unpack("<IiiiihhhH", payload[:28])
+    time_ms, lat, lon, alt, rel_alt, vx, vy, vz, hdg = struct.unpack("<IiiiihhhH", payload[:28])
     return {
         "time_boot_ms": time_ms,
         "lat_deg": lat / 1e7,
@@ -332,8 +349,7 @@ def parse_global_position_int(payload: bytes) -> dict:
 def parse_attitude(payload: bytes) -> dict:
     # time_boot_ms(u32) roll(f32) pitch(f32) yaw(f32) rollspd(f32)
     # pitchspd(f32) yawspd(f32)
-    (time_ms, roll, pitch, yaw, rs, ps, ys) = \
-        struct.unpack("<Iffffff", payload[:28])
+    time_ms, roll, pitch, yaw, rs, ps, ys = struct.unpack("<Iffffff", payload[:28])
     return {
         "time_boot_ms": time_ms,
         "roll_deg": roll * RAD_TO_DEG,
@@ -351,10 +367,21 @@ def parse_sys_status(payload: bytes) -> dict:
       drop_rate_comm(u16) errors_comm(u16)
       errors_count1..4(4*u16) battery_remaining(i8)
     """
-    (_sensors_present, _enabled, _health, _load, voltage_mv,
-     _current_ca, _drop_rate, _errors_comm,
-     _ec1, _ec2, _ec3, _ec4,
-     battery_remaining) = struct.unpack("<IIIHHhHHHHHHb", payload[:31])
+    (
+        _sensors_present,
+        _enabled,
+        _health,
+        _load,
+        voltage_mv,
+        _current_ca,
+        _drop_rate,
+        _errors_comm,
+        _ec1,
+        _ec2,
+        _ec3,
+        _ec4,
+        battery_remaining,
+    ) = struct.unpack("<IIIHHhHHHHHHb", payload[:31])
     return {
         "voltage_mv": voltage_mv,
         "battery_remaining_pct": battery_remaining,
@@ -364,8 +391,9 @@ def parse_sys_status(payload: bytes) -> dict:
 def parse_gps_raw_int(payload: bytes) -> dict:
     # time_usec(u64) lat(i32) lon(i32) alt(i32) eph(u16) epv(u16)
     # vel(u16) cog(u16) fix_type(u8) satellites(u8)
-    (_tsu, lat, lon, alt, _eph, _epv, _vel, _cog, fix_type, sats) = \
-        struct.unpack("<QiiiHHHHBB", payload[:30])
+    _tsu, lat, lon, alt, _eph, _epv, _vel, _cog, fix_type, sats = struct.unpack(
+        "<QiiiHHHHBB", payload[:30]
+    )
     return {
         "lat_deg": lat / 1e7,
         "lon_deg": lon / 1e7,
@@ -381,8 +409,7 @@ def parse_battery_status(payload: bytes) -> dict:
     # energy_consumed(i32) battery_remaining(i8)
     head = struct.unpack("<BBBh", payload[:5])
     voltages = struct.unpack("<10H", payload[5:25])
-    (_current_ca, _cons, _energy, remaining) = \
-        struct.unpack("<hiib", payload[25:36])
+    _current_ca, _cons, _energy, remaining = struct.unpack("<hiib", payload[25:36])
     return {
         "id": head[0],
         "voltage_mv": voltages[0],  # cell 1 / main bus
@@ -509,8 +536,7 @@ class UdpTransport(_Transport):
 
 
 class TcpTransport(_Transport):
-    def __init__(self, host: str, port: int,
-                 timeout: float = DEFAULT_CONNECT_TIMEOUT_S):
+    def __init__(self, host: str, port: int, timeout: float = DEFAULT_CONNECT_TIMEOUT_S):
         self.sock = socket.create_connection((host, port), timeout=timeout)
         self.sock.setblocking(False)
 
@@ -549,13 +575,15 @@ class MAVLinkClient:
         Pre-built transport — lets tests inject a fake without touching sockets.
     """
 
-    def __init__(self,
-                 connection_string: str = DEFAULT_UDP_URL,
-                 transport: Optional[_Transport] = None,
-                 source_system: int = MAVLINK_SYSTEM_ID,
-                 source_component: int = MAVLINK_COMPONENT_ID,
-                 target_system: int = MAVLINK_TARGET_SYSTEM,
-                 target_component: int = MAVLINK_TARGET_COMPONENT):
+    def __init__(
+        self,
+        connection_string: str = DEFAULT_UDP_URL,
+        transport: Optional[_Transport] = None,
+        source_system: int = MAVLINK_SYSTEM_ID,
+        source_component: int = MAVLINK_COMPONENT_ID,
+        target_system: int = MAVLINK_TARGET_SYSTEM,
+        target_component: int = MAVLINK_TARGET_COMPONENT,
+    ):
         self.connection_string = connection_string
         self._transport = transport
         self._source_system = source_system
@@ -598,8 +626,7 @@ class MAVLinkClient:
                 else:
                     self._transport = UdpTransport(host, port)
             except Exception as e:
-                logger.error("[MAVLink] connect(%s) failed: %s",
-                             self.connection_string, e)
+                logger.error("[MAVLink] connect(%s) failed: %s", self.connection_string, e)
                 return False
 
         self._connected = True
@@ -632,15 +659,19 @@ class MAVLinkClient:
         self._seq = (self._seq + 1) & 0xFF
         return seq
 
-    def _send_command_long(self, command: int,
-                           params: tuple = (0.0,) * 7) -> bool:
+    def _send_command_long(self, command: int, params: tuple = (0.0,) * 7) -> bool:
         if not self._transport:
             return False
         p = list(params) + [0.0] * max(0, 7 - len(params))
         frame = encode_command_long(
             command,
-            param1=p[0], param2=p[1], param3=p[2], param4=p[3],
-            param5=p[4], param6=p[5], param7=p[6],
+            param1=p[0],
+            param2=p[1],
+            param3=p[2],
+            param4=p[3],
+            param5=p[4],
+            param6=p[5],
+            param7=p[6],
             target_system=self._target_system,
             target_component=self._target_component,
             seq=self._next_seq(),
@@ -681,17 +712,14 @@ class MAVLinkClient:
         logger.info("[MAVLink] RTL")
         return self._send_command_long(MAV_CMD_NAV_RETURN_TO_LAUNCH)
 
-    async def navigate_to_waypoint(self, lat: float, lon: float,
-                                   alt_m: float = 10.0) -> bool:
-        logger.info("[MAVLink] WAYPOINT (%.6f, %.6f) alt=%.1fm",
-                    lat, lon, alt_m)
+    async def navigate_to_waypoint(self, lat: float, lon: float, alt_m: float = 10.0) -> bool:
+        logger.info("[MAVLink] WAYPOINT (%.6f, %.6f) alt=%.1fm", lat, lon, alt_m)
         return self._send_command_long(
             MAV_CMD_NAV_WAYPOINT,
             (0.0, 0.0, 0.0, 0.0, float(lat), float(lon), float(alt_m)),
         )
 
-    async def execute_skill(self, skill: str,
-                            args: Optional[dict] = None) -> bool:
+    async def execute_skill(self, skill: str, args: Optional[dict] = None) -> bool:
         """Translate a brain skill to a MAVLink command and send it."""
         cmd = translate_skill(skill, args)
         if cmd is None:
@@ -815,8 +843,7 @@ class MAVLinkClient:
         if not t.connected:
             return None
         if 0 < t.battery_pct < BATTERY_LAND_PCT:
-            logger.critical("[MAVLink] CRITICAL battery %d%% — LAND",
-                            t.battery_pct)
+            logger.critical("[MAVLink] CRITICAL battery %d%% — LAND", t.battery_pct)
             await self.land()
             return "land"
         if 0 < t.battery_pct < BATTERY_RTL_PCT:

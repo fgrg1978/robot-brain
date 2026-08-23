@@ -28,19 +28,20 @@ logger = logging.getLogger("brain.logger")
 # Constants
 # ---------------------------------------------------------------------------
 LOG_DIR_DEFAULT = "data/logs"
-LOG_MAX_EVENTS = 100_000           # max events per mission file
-LOG_FLUSH_INTERVAL = 50            # flush to disk every N events
-LOG_RETENTION_DAYS = 90            # auto-cleanup old logs
+LOG_MAX_EVENTS = 100_000  # max events per mission file
+LOG_FLUSH_INTERVAL = 50  # flush to disk every N events
+LOG_RETENTION_DAYS = 90  # auto-cleanup old logs
 
 
 # ---------------------------------------------------------------------------
 # Types
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class LogEvent:
     timestamp: float
-    event_type: str                # sensor, decision, action, alert, system
+    event_type: str  # sensor, decision, action, alert, system
     data: dict = field(default_factory=dict)
 
 
@@ -70,6 +71,7 @@ class MissionAnalytics:
 # ---------------------------------------------------------------------------
 # MissionLogger
 # ---------------------------------------------------------------------------
+
 
 class MissionLogger:
     """Records and replays mission data."""
@@ -105,7 +107,8 @@ class MissionLogger:
 
         os.makedirs(self._log_dir, exist_ok=True)
         self._file_path = os.path.join(
-            self._log_dir, f"{self._mission_id}.jsonl",
+            self._log_dir,
+            f"{self._mission_id}.jsonl",
         )
 
         self.log_event("system", {"action": "mission_start", "name": name})
@@ -120,9 +123,7 @@ class MissionLogger:
         self._active = False
 
         duration = time.time() - self._start_time
-        alerts = sum(
-            1 for e in self._events if e.event_type == "alert"
-        )
+        alerts = sum(1 for e in self._events if e.event_type == "alert")
         summary = MissionSummary(
             mission_id=self._mission_id,
             start_time=self._start_time,
@@ -133,7 +134,9 @@ class MissionLogger:
         )
         logger.info(
             "[Logger] Mission ended: %s (%d events, %.0fs)",
-            self._mission_id, len(self._events), duration,
+            self._mission_id,
+            len(self._events),
+            duration,
         )
         return summary
 
@@ -166,21 +169,21 @@ class MissionLogger:
                 if not line:
                     continue
                 raw = json.loads(line)
-                events.append(LogEvent(
-                    timestamp=raw.get("timestamp", 0),
-                    event_type=raw.get("event_type", ""),
-                    data=raw.get("data", {}),
-                ))
+                events.append(
+                    LogEvent(
+                        timestamp=raw.get("timestamp", 0),
+                        event_type=raw.get("event_type", ""),
+                        data=raw.get("data", {}),
+                    )
+                )
         return events
 
     def list_missions(self) -> list[str]:
         if not os.path.exists(self._log_dir):
             return []
-        return sorted([
-            f.replace(".jsonl", "")
-            for f in os.listdir(self._log_dir)
-            if f.endswith(".jsonl")
-        ])
+        return sorted(
+            [f.replace(".jsonl", "") for f in os.listdir(self._log_dir) if f.endswith(".jsonl")]
+        )
 
     def analyze(self, events: list[LogEvent]) -> MissionAnalytics:
         if not events:
@@ -204,10 +207,7 @@ class MissionLogger:
             events_by_type=by_type,
             alert_count=alerts,
             duration_s=max(0, duration),
-            avg_battery_mv=(
-                sum(battery_values) / len(battery_values)
-                if battery_values else 0
-            ),
+            avg_battery_mv=(sum(battery_values) / len(battery_values) if battery_values else 0),
             min_battery_mv=min(battery_values) if battery_values else 0,
         )
 

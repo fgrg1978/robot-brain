@@ -3,6 +3,15 @@
 import base64
 from openai import OpenAI
 
+# Request timeout (seconds) for the synchronous OpenAI client. Callers that
+# invoke `VisionPerception.describe()` from an asyncio context MUST wrap the
+# call in `await asyncio.wait_for(asyncio.to_thread(...), timeout=
+# VLM_TIMEOUT_S)` — this constructor-level timeout is the last-resort bound
+# on the underlying HTTP call itself (LM Studio hang / dead backend), not a
+# substitute for that wrapping. Image analysis is slower than a plain text
+# completion, hence a larger budget than LLM_TIMEOUT_S.
+VLM_TIMEOUT_S: float = 20.0
+
 
 class VisionPerception:
     """Sends camera frames to a VLM via LM Studio's OpenAI-compatible API."""
@@ -11,6 +20,7 @@ class VisionPerception:
         self.client = OpenAI(
             base_url=f"http://{host}:{port}/v1",
             api_key="not-needed",
+            timeout=VLM_TIMEOUT_S,
         )
         self.model = model
 
@@ -38,16 +48,18 @@ class VisionPerception:
 
         response = self.client.chat.completions.create(
             model=self.model,
-            messages=[{
-                "role": "user",
-                "content": [
-                    {
-                        "type": "image_url",
-                        "image_url": {"url": f"data:image/jpeg;base64,{b64}"},
-                    },
-                    {"type": "text", "text": prompt},
-                ],
-            }],
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "image_url",
+                            "image_url": {"url": f"data:image/jpeg;base64,{b64}"},
+                        },
+                        {"type": "text", "text": prompt},
+                    ],
+                }
+            ],
             max_tokens=150,
             temperature=0.3,
         )

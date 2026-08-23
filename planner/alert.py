@@ -18,8 +18,13 @@ from typing import Optional, Callable, Awaitable
 
 import protocol
 from protocol import (
-    ConfigCmd, CONFIG_CMD,
-    BUZZER_CONFIG_KEY, BUZZER_OFF, BUZZER_BEEP, BUZZER_SIREN, BUZZER_CHIRP,
+    ConfigCmd,
+    CONFIG_CMD,
+    BUZZER_CONFIG_KEY,
+    BUZZER_OFF,
+    BUZZER_BEEP,
+    BUZZER_SIREN,
+    BUZZER_CHIRP,
 )
 
 logger = logging.getLogger("brain.alert")
@@ -27,25 +32,26 @@ logger = logging.getLogger("brain.alert")
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
-ALERT_COOLDOWN_S = 30              # don't repeat alerts for same zone within this window
-EVIDENCE_FRAMES = 10               # frames to save per detection event
-EVIDENCE_RETENTION_DAYS = 30       # cleanup old evidence after this many days
-EVIDENCE_DIR = "data/evidence"     # base directory for evidence storage
+ALERT_COOLDOWN_S = 30  # don't repeat alerts for same zone within this window
+EVIDENCE_FRAMES = 10  # frames to save per detection event
+EVIDENCE_RETENTION_DAYS = 30  # cleanup old evidence after this many days
+EVIDENCE_DIR = "data/evidence"  # base directory for evidence storage
 EVIDENCE_CAPTURE_INTERVAL_S = 0.5  # interval between evidence frames
 
 
 @dataclass
 class AlertEvent:
     """A single alert event with metadata."""
-    alert_id: str                  # unique ID (timestamp-based)
-    trigger_label: str             # what triggered it (pir_motion, sound_event, etc.)
-    vlm_description: str           # VLM scene description
-    detection_label: str           # what was detected (person, fire, etc.)
-    timestamp: float               # monotonic time of alert
-    wall_time: str                 # ISO format wall clock time
-    evidence_dir: str = ""         # path to evidence directory
-    frames_saved: int = 0          # number of evidence frames saved
-    notified: bool = False         # whether notifications were sent
+
+    alert_id: str  # unique ID (timestamp-based)
+    trigger_label: str  # what triggered it (pir_motion, sound_event, etc.)
+    vlm_description: str  # VLM scene description
+    detection_label: str  # what was detected (person, fire, etc.)
+    timestamp: float  # monotonic time of alert
+    wall_time: str  # ISO format wall clock time
+    evidence_dir: str = ""  # path to evidence directory
+    frames_saved: int = 0  # number of evidence frames saved
+    notified: bool = False  # whether notifications were sent
 
 
 class AlertPipeline:
@@ -134,8 +140,12 @@ class AlertPipeline:
         self._last_alert_time[cooldown_key] = now
         self._alerts.append(event)
 
-        logger.info("[Alert] RAISED: %s detected by %s — %s",
-                    detection_label, trigger_label, vlm_description)
+        logger.info(
+            "[Alert] RAISED: %s detected by %s — %s",
+            detection_label,
+            trigger_label,
+            vlm_description,
+        )
 
         # 1. Buzzer beep
         if "alert" in actions or "buzzer_alert" in actions:
@@ -163,9 +173,11 @@ class AlertPipeline:
     def finish_evidence(self):
         """Stop collecting evidence for the current alert."""
         if self._active_evidence:
-            logger.info("[Alert] Evidence collection done: %d frames in %s",
-                        self._active_evidence.frames_saved,
-                        self._active_evidence.evidence_dir)
+            logger.info(
+                "[Alert] Evidence collection done: %d frames in %s",
+                self._active_evidence.frames_saved,
+                self._active_evidence.evidence_dir,
+            )
             self._active_evidence = None
 
     # ------------------------------------------------------------------
@@ -211,8 +223,7 @@ class AlertPipeline:
             if event.frames_saved == 1:
                 self._save_metadata(event)
 
-            logger.debug("[Alert] Saved evidence frame %d: %s",
-                         event.frames_saved, frame_path)
+            logger.debug("[Alert] Saved evidence frame %d: %s", event.frames_saved, frame_path)
         except OSError as e:
             logger.error("[Alert] Failed to save evidence: %s", e)
 
@@ -277,6 +288,7 @@ class AlertPipeline:
                 mtime = os.path.getmtime(entry_path)
                 if mtime < cutoff:
                     import shutil
+
                     shutil.rmtree(entry_path)
                     removed += 1
                     logger.info("[Alert] Cleaned old evidence: %s", entry)
@@ -287,5 +299,4 @@ class AlertPipeline:
 
     def __repr__(self) -> str:
         active = "recording" if self._active_evidence else "idle"
-        return (f"AlertPipeline(alerts={self.alert_count}, "
-                f"evidence={active})")
+        return f"AlertPipeline(alerts={self.alert_count}, " f"evidence={active})"

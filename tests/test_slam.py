@@ -6,16 +6,24 @@ import tempfile
 import pytest
 
 from perception.slam import (
-    OccupancyGrid, ScanMatcher, SLAM, _bresenham,
-    SLAM_MAP_RESOLUTION_MM, SLAM_MAP_SIZE_CELLS,
-    LOG_ODDS_OCCUPIED, LOG_ODDS_FREE, LOG_ODDS_PRIOR,
-    OCCUPIED_THRESHOLD, FREE_THRESHOLD,
-    SCAN_MAX_RANGE_MM, SCAN_MIN_RANGE_MM,
+    OccupancyGrid,
+    ScanMatcher,
+    SLAM,
+    _bresenham,
+    SLAM_MAP_RESOLUTION_MM,
+    SLAM_MAP_SIZE_CELLS,
+    LOG_ODDS_OCCUPIED,
+    LOG_ODDS_FREE,
+    LOG_ODDS_PRIOR,
+    OCCUPIED_THRESHOLD,
+    FREE_THRESHOLD,
+    SCAN_MAX_RANGE_MM,
+    SCAN_MIN_RANGE_MM,
     CDEG_TO_RAD,
 )
 
-
 # ── OccupancyGrid ───────────────────────────────────────────────────────────
+
 
 class TestOccupancyGrid:
 
@@ -23,7 +31,7 @@ class TestOccupancyGrid:
         g = OccupancyGrid()
         assert g.resolution_mm == SLAM_MAP_RESOLUTION_MM
         assert g.size_cells == SLAM_MAP_SIZE_CELLS
-        assert len(g.cells) == SLAM_MAP_SIZE_CELLS ** 2
+        assert len(g.cells) == SLAM_MAP_SIZE_CELLS**2
 
     def test_small_grid(self):
         g = OccupancyGrid(resolution_mm=100, size_cells=10)
@@ -104,6 +112,7 @@ class TestOccupancyGrid:
 
 # ── Bresenham ────────────────────────────────────────────────────────────────
 
+
 class TestBresenham:
 
     def test_horizontal(self):
@@ -128,6 +137,7 @@ class TestBresenham:
 
 
 # ── ScanMatcher ──────────────────────────────────────────────────────────────
+
 
 class TestScanMatcher:
 
@@ -155,6 +165,7 @@ class TestScanMatcher:
 
 
 # ── SLAM ─────────────────────────────────────────────────────────────────────
+
 
 class TestSLAM:
 

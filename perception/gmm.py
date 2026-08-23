@@ -83,9 +83,11 @@ BLOB_NEIGHBOUR_COUNT: int = 4
 # Profile shape (subset of perception.motion_detect.PROFILES)
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class GMMProfile:
     """Runtime profile for GMM: noise level, learning rate, blob filter."""
+
     noise_sigma: float = GMM_NOISE_SIGMA_DEFAULT
     var_thresh: float = GMM_VAR_THRESH_DEFAULT
     learning_rate: float = GMM_LEARNING_RATE
@@ -107,9 +109,11 @@ class GMMProfile:
 # Pure-Python gaussian component (fallback implementation)
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class GaussianComponent:
     """Single gaussian in a per-pixel mixture (fallback path)."""
+
     mean: float = 0.0
     variance: float = GMM_NOISE_SIGMA_DEFAULT * GMM_NOISE_SIGMA_DEFAULT
     weight: float = 0.0
@@ -119,6 +123,7 @@ class GaussianComponent:
 # Protocol so motion_detect.py doesn't need to know which impl is active
 # ---------------------------------------------------------------------------
 
+
 class GMMBackend(Protocol):
     width: int
     height: int
@@ -127,13 +132,13 @@ class GMMBackend(Protocol):
         """Update model with new frame. Returns flat foreground mask."""
         ...
 
-    def set_profile(self, profile: GMMProfile) -> None:
-        ...
+    def set_profile(self, profile: GMMProfile) -> None: ...
 
 
 # ---------------------------------------------------------------------------
 # GMMBackgroundModel — pure Python fallback
 # ---------------------------------------------------------------------------
+
 
 class GMMBackgroundModel:
     """Pure-Python GMM background model.
@@ -159,17 +164,21 @@ class GMMBackgroundModel:
             row: list[GaussianComponent] = []
             for k in range(self._k):
                 if k == 0:
-                    row.append(GaussianComponent(
-                        mean=float(px_val),
-                        variance=var_init,
-                        weight=1.0,
-                    ))
+                    row.append(
+                        GaussianComponent(
+                            mean=float(px_val),
+                            variance=var_init,
+                            weight=1.0,
+                        )
+                    )
                 else:
-                    row.append(GaussianComponent(
-                        mean=0.0,
-                        variance=var_init,
-                        weight=0.0,
-                    ))
+                    row.append(
+                        GaussianComponent(
+                            mean=0.0,
+                            variance=var_init,
+                            weight=0.0,
+                        )
+                    )
             self._components.append(row)
 
     def update(self, gray: list[int]) -> list[int]:
@@ -253,6 +262,7 @@ class GMMBackgroundModel:
 
 try:
     import numpy as _np  # noqa: F401
+
     _HAS_NUMPY = True
 except ImportError:
     _HAS_NUMPY = False
@@ -269,6 +279,7 @@ class GMMBackgroundModelNumpy:
 
     def __init__(self, width: int, height: int, profile: GMMProfile):
         import numpy as np
+
         self._np = np
         self.width = width
         self.height = height
@@ -302,27 +313,27 @@ class GMMBackgroundModelNumpy:
             self._initialize(gray)
             return [MASK_BG] * self._n
 
-        arr = np.asarray(gray, dtype=np.float32).reshape(-1)       # (N,)
-        x = arr[:, None]                                           # (N,1)
+        arr = np.asarray(gray, dtype=np.float32).reshape(-1)  # (N,)
+        x = arr[:, None]  # (N,1)
 
         lr = self._profile.learning_rate
         var_thresh = self._profile.var_thresh
         bg_ratio = GMM_BACKGROUND_RATIO
         var_init = self._profile.noise_sigma * self._profile.noise_sigma
 
-        std = np.sqrt(np.maximum(self.variances, GMM_VARIANCE_FLOOR))   # (N,K)
-        diff = np.abs(x - self.means)                                   # (N,K)
-        within = diff < (var_thresh * std)                              # (N,K)
-        alive = self.weights > GMM_WEIGHT_EPSILON                       # (N,K)
-        candidate = within & alive                                      # (N,K)
+        std = np.sqrt(np.maximum(self.variances, GMM_VARIANCE_FLOOR))  # (N,K)
+        diff = np.abs(x - self.means)  # (N,K)
+        within = diff < (var_thresh * std)  # (N,K)
+        alive = self.weights > GMM_WEIGHT_EPSILON  # (N,K)
+        candidate = within & alive  # (N,K)
 
         # Pick first matching component per pixel (if any).
-        has_any = candidate.any(axis=1)                                 # (N,)
-        first_match = np.argmax(candidate, axis=1)                      # (N,)
+        has_any = candidate.any(axis=1)  # (N,)
+        first_match = np.argmax(candidate, axis=1)  # (N,)
         rows = np.arange(self._n)
 
         # Decay all gaussian weights uniformly, then bump the matched one.
-        self.weights *= (1.0 - lr)
+        self.weights *= 1.0 - lr
         self.weights[rows[has_any], first_match[has_any]] += lr
 
         # Update mean + variance of the matched gaussian only.
@@ -339,7 +350,8 @@ class GMMBackgroundModelNumpy:
             var_old = self.variances[matched_rows, matched_cols]
             new_var = (1.0 - rho) * var_old + rho * d * d
             self.variances[matched_rows, matched_cols] = np.maximum(
-                new_var, GMM_VARIANCE_FLOOR,
+                new_var,
+                GMM_VARIANCE_FLOOR,
             )
 
         # Replace the weakest component for pixels with no match.
@@ -358,7 +370,7 @@ class GMMBackgroundModelNumpy:
         # Classify foreground: walk gaussians sorted by weight/sigma.
         std2 = np.sqrt(np.maximum(self.variances, GMM_VARIANCE_FLOOR))
         rank_key = self.weights / std2
-        order = np.argsort(-rank_key, axis=1)                           # (N,K)
+        order = np.argsort(-rank_key, axis=1)  # (N,K)
         sorted_weights = np.take_along_axis(self.weights, order, axis=1)
         sorted_means = np.take_along_axis(self.means, order, axis=1)
         sorted_vars = np.take_along_axis(self.variances, order, axis=1)
@@ -383,6 +395,7 @@ class GMMBackgroundModelNumpy:
 # Factory
 # ---------------------------------------------------------------------------
 
+
 def build_gmm(width: int, height: int, profile: GMMProfile) -> GMMBackend:
     """Return numpy impl if available, else pure-Python fallback."""
     if _HAS_NUMPY:
@@ -393,6 +406,7 @@ def build_gmm(width: int, height: int, profile: GMMProfile) -> GMMBackend:
 # ---------------------------------------------------------------------------
 # Morphological open (erode followed by dilate)
 # ---------------------------------------------------------------------------
+
 
 def _morph_pass(
     mask: list[int],
@@ -460,6 +474,7 @@ def morph_open(
     """
     if _HAS_NUMPY:
         import numpy as np
+
         arr = np.asarray(mask, dtype=np.uint8).reshape(h, w)
         eroded = _morph_vec(arr, erode_ksize, erode=True)
         dilated = _morph_vec(eroded, dilate_ksize, erode=False)
@@ -472,6 +487,7 @@ def morph_open(
 def _morph_vec(arr, ksize: int, *, erode: bool):
     """Numpy-based morphological op using min/max over shifted views."""
     import numpy as np
+
     r = ksize // 2
     padded = np.pad(arr, r, mode="constant", constant_values=0)
     h, w = arr.shape
@@ -480,14 +496,14 @@ def _morph_vec(arr, ksize: int, *, erode: bool):
         stack_min = np.ones_like(arr)
         for dy in range(-r, r + 1):
             for dx in range(-r, r + 1):
-                shifted = padded[r + dy:r + dy + h, r + dx:r + dx + w]
+                shifted = padded[r + dy : r + dy + h, r + dx : r + dx + w]
                 stack_min = np.minimum(stack_min, shifted)
         out = stack_min
     else:
         stack_max = np.zeros_like(arr)
         for dy in range(-r, r + 1):
             for dx in range(-r, r + 1):
-                shifted = padded[r + dy:r + dy + h, r + dx:r + dx + w]
+                shifted = padded[r + dy : r + dy + h, r + dx : r + dx + w]
                 stack_max = np.maximum(stack_max, shifted)
         out = stack_max
     return out
@@ -497,9 +513,11 @@ def _morph_vec(arr, ksize: int, *, erode: bool):
 # Connected-component blob detection with centroid + area
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class Blob:
     """Detected foreground region."""
+
     cx: float = 0.0
     cy: float = 0.0
     area: int = 0
@@ -542,10 +560,14 @@ def detect_blobs(
                     continue
                 pixels_x.append(px)
                 pixels_y.append(py)
-                if px < x0: x0 = px
-                if px > x1: x1 = px
-                if py < y0: y0 = py
-                if py > y1: y1 = py
+                if px < x0:
+                    x0 = px
+                if px > x1:
+                    x1 = px
+                if py < y0:
+                    y0 = py
+                if py > y1:
+                    y1 = py
                 for dx, dy in nbrs:
                     nx, ny = px + dx, py + dy
                     if 0 <= nx < w and 0 <= ny < h and not visited[ny * w + nx]:
@@ -559,8 +581,12 @@ def detect_blobs(
             cy = sum(pixels_y) / area
 
             if edge_margin_px > 0:
-                if (cx < edge_margin_px or cx > w - edge_margin_px
-                        or cy < edge_margin_px or cy > h - edge_margin_px):
+                if (
+                    cx < edge_margin_px
+                    or cx > w - edge_margin_px
+                    or cy < edge_margin_px
+                    or cy > h - edge_margin_px
+                ):
                     continue
 
             blobs.append(Blob(cx=cx, cy=cy, area=area, bbox=(x0, y0, x1, y1)))

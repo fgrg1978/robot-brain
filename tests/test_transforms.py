@@ -3,12 +3,18 @@
 import math
 
 from planner.transforms import (
-    Transform, Frame, TransformTree,
-    MAX_FRAMES, ROOT_FRAME_NAME,
+    Transform,
+    Frame,
+    TransformTree,
+    MAX_FRAMES,
+    ROOT_FRAME_NAME,
     DEGREES_TO_RADIANS,
-    DEFAULT_IMU_OFFSET_Z_MM, DEFAULT_CAMERA_OFFSET_X_MM,
-    DEFAULT_CAMERA_OFFSET_Z_MM, DEFAULT_RANGE_FRONT_OFFSET_X_MM,
-    DEFAULT_RANGE_FRONT_OFFSET_Z_MM, DEFAULT_RANGE_SIDE_OFFSET_Y_MM,
+    DEFAULT_IMU_OFFSET_Z_MM,
+    DEFAULT_CAMERA_OFFSET_X_MM,
+    DEFAULT_CAMERA_OFFSET_Z_MM,
+    DEFAULT_RANGE_FRONT_OFFSET_X_MM,
+    DEFAULT_RANGE_FRONT_OFFSET_Z_MM,
+    DEFAULT_RANGE_SIDE_OFFSET_Y_MM,
     RANGE_RIGHT_YAW_DEG,
 )
 
@@ -21,6 +27,7 @@ def _approx(a: float, b: float, tol: float = FLOAT_TOLERANCE) -> bool:
 
 
 # ── Transform basic math ────────────────────────────────────────────────────
+
 
 class TestTransform:
     def test_identity_compose(self):
@@ -103,6 +110,7 @@ class TestTransform:
 
 # ── TransformTree ────────────────────────────────────────────────────────────
 
+
 class TestTransformTree:
     def test_root_exists(self):
         tree = TransformTree()
@@ -110,8 +118,7 @@ class TestTransformTree:
 
     def test_add_frame(self):
         tree = TransformTree()
-        tree.add_frame("imu_link", ROOT_FRAME_NAME,
-                        Transform(z_mm=50.0))
+        tree.add_frame("imu_link", ROOT_FRAME_NAME, Transform(z_mm=50.0))
         assert "imu_link" in tree.list_frames()
 
     def test_identity_transform_same_frame(self):
@@ -123,8 +130,7 @@ class TestTransformTree:
 
     def test_parent_to_child(self):
         tree = TransformTree()
-        tree.add_frame("cam", ROOT_FRAME_NAME,
-                        Transform(x_mm=100.0, z_mm=80.0))
+        tree.add_frame("cam", ROOT_FRAME_NAME, Transform(x_mm=100.0, z_mm=80.0))
         tf = tree.get_transform(ROOT_FRAME_NAME, "cam")
         assert tf is not None
         assert _approx(tf.x_mm, 100.0)
@@ -132,8 +138,7 @@ class TestTransformTree:
 
     def test_child_to_parent(self):
         tree = TransformTree()
-        tree.add_frame("cam", ROOT_FRAME_NAME,
-                        Transform(x_mm=100.0, z_mm=80.0))
+        tree.add_frame("cam", ROOT_FRAME_NAME, Transform(x_mm=100.0, z_mm=80.0))
         tf = tree.get_transform("cam", ROOT_FRAME_NAME)
         assert tf is not None
         assert _approx(tf.x_mm, -100.0)
@@ -141,10 +146,8 @@ class TestTransformTree:
 
     def test_sibling_transform(self):
         tree = TransformTree()
-        tree.add_frame("imu", ROOT_FRAME_NAME,
-                        Transform(z_mm=50.0))
-        tree.add_frame("cam", ROOT_FRAME_NAME,
-                        Transform(x_mm=100.0, z_mm=80.0))
+        tree.add_frame("imu", ROOT_FRAME_NAME, Transform(z_mm=50.0))
+        tree.add_frame("cam", ROOT_FRAME_NAME, Transform(x_mm=100.0, z_mm=80.0))
         # imu -> base_link -> cam
         tf = tree.get_transform("imu", "cam")
         assert tf is not None
@@ -158,8 +161,7 @@ class TestTransformTree:
 
     def test_transform_point(self):
         tree = TransformTree()
-        tree.add_frame("sensor", ROOT_FRAME_NAME,
-                        Transform(x_mm=100.0, y_mm=50.0))
+        tree.add_frame("sensor", ROOT_FRAME_NAME, Transform(x_mm=100.0, y_mm=50.0))
         # A point at (10, 0, 0) in sensor frame
         pt = tree.transform_point((10.0, 0.0, 0.0), "sensor", ROOT_FRAME_NAME)
         assert pt is not None
@@ -173,16 +175,14 @@ class TestTransformTree:
 
     def test_transform_point_with_rotation(self):
         tree = TransformTree()
-        tree.add_frame("right_range", ROOT_FRAME_NAME,
-                        Transform(y_mm=-75.0, yaw_deg=-90.0))
+        tree.add_frame("right_range", ROOT_FRAME_NAME, Transform(y_mm=-75.0, yaw_deg=-90.0))
         # A point at (100, 0, 0) in right_range frame (i.e., 100mm along
         # the sensor's x-axis). The sensor is rotated -90deg from base,
         # so its x-axis points in the -y direction of base.
         # Inverse transform: yaw=+90, translation becomes (-75, ~0).
         # Applying +90 rotation to (100,0) gives (0, 100).
         # Result in base: (-75+0, 0+100, 0) = (-75, 100, 0).
-        pt = tree.transform_point((100.0, 0.0, 0.0),
-                                   "right_range", ROOT_FRAME_NAME)
+        pt = tree.transform_point((100.0, 0.0, 0.0), "right_range", ROOT_FRAME_NAME)
         assert pt is not None
         assert _approx(pt[0], -75.0, tol=0.1)
         assert _approx(pt[1], 100.0, tol=0.1)
@@ -209,20 +209,16 @@ class TestTransformTree:
 
     def test_chain_three_deep(self):
         tree = TransformTree()
-        tree.add_frame("arm", ROOT_FRAME_NAME,
-                        Transform(x_mm=200.0))
-        tree.add_frame("gripper", "arm",
-                        Transform(x_mm=100.0))
+        tree.add_frame("arm", ROOT_FRAME_NAME, Transform(x_mm=200.0))
+        tree.add_frame("gripper", "arm", Transform(x_mm=100.0))
         tf = tree.get_transform(ROOT_FRAME_NAME, "gripper")
         assert tf is not None
         assert _approx(tf.x_mm, 300.0)
 
     def test_chain_reverse(self):
         tree = TransformTree()
-        tree.add_frame("arm", ROOT_FRAME_NAME,
-                        Transform(x_mm=200.0))
-        tree.add_frame("gripper", "arm",
-                        Transform(x_mm=100.0))
+        tree.add_frame("arm", ROOT_FRAME_NAME, Transform(x_mm=200.0))
+        tree.add_frame("gripper", "arm", Transform(x_mm=100.0))
         tf = tree.get_transform("gripper", ROOT_FRAME_NAME)
         assert tf is not None
         assert _approx(tf.x_mm, -300.0)
@@ -230,21 +226,25 @@ class TestTransformTree:
 
 # ── from_robot_description ───────────────────────────────────────────────────
 
+
 class TestFromRobotDescription:
     def _make_desc(self):
         """Create a minimal mock RobotDescription."""
         from planner.robot_description import RobotDescription
-        return RobotDescription.from_dict({
-            "name": "test",
-            "type": "wheeled",
-            "sensors": [
-                {"type": "imu", "model": "mpu6050"},
-                {"type": "camera", "model": "ov2640"},
-                {"type": "rangefinder", "position": "front"},
-                {"type": "rangefinder", "position": "right"},
-                {"type": "gps", "model": "neo6m"},
-            ],
-        })
+
+        return RobotDescription.from_dict(
+            {
+                "name": "test",
+                "type": "wheeled",
+                "sensors": [
+                    {"type": "imu", "model": "mpu6050"},
+                    {"type": "camera", "model": "ov2640"},
+                    {"type": "rangefinder", "position": "front"},
+                    {"type": "rangefinder", "position": "right"},
+                    {"type": "gps", "model": "neo6m"},
+                ],
+            }
+        )
 
     def test_frames_created(self):
         desc = self._make_desc()

@@ -5,20 +5,36 @@ import time
 import pytest
 
 from planner.deterrent import (
-    DeterrentManager, DeterrentLevel, DeterrentState,
-    ESCALATION_STEP_S, DEESCALATION_CLEAR_COUNT,
-    SIREN_MAX_DURATION_S, ADVANCE_SPEED_PCT,
-    SERVO_PAN_NEUTRAL_DEG, SERVO_TILT_NEUTRAL_DEG,
-    SERVO_TILT_MIN_DEG, SERVO_TILT_MAX_DEG,
+    DeterrentManager,
+    DeterrentLevel,
+    DeterrentState,
+    ESCALATION_STEP_S,
+    DEESCALATION_CLEAR_COUNT,
+    SIREN_MAX_DURATION_S,
+    ADVANCE_SPEED_PCT,
+    SERVO_PAN_NEUTRAL_DEG,
+    SERVO_TILT_NEUTRAL_DEG,
+    SERVO_TILT_MIN_DEG,
+    SERVO_TILT_MAX_DEG,
 )
 from protocol import (
-    ConfigCmd, CONFIG_CMD,
-    SIREN_CONFIG_KEY, SPOTLIGHT_CONFIG_KEY, LASER_CONFIG_KEY,
-    SERVO_PAN_KEY, SERVO_TILT_KEY, SPEAKER_CONFIG_KEY,
+    ConfigCmd,
+    CONFIG_CMD,
+    SIREN_CONFIG_KEY,
+    SPOTLIGHT_CONFIG_KEY,
+    LASER_CONFIG_KEY,
+    SERVO_PAN_KEY,
+    SERVO_TILT_KEY,
+    SPEAKER_CONFIG_KEY,
     BUZZER_CONFIG_KEY,
-    DEVICE_OFF, DEVICE_ON, SPOTLIGHT_STROBE,
-    SPEAKER_STOP, SPEAKER_WARNING, SPEAKER_DOG_BARK,
-    BUZZER_BEEP, BUZZER_OFF,
+    DEVICE_OFF,
+    DEVICE_ON,
+    SPOTLIGHT_STROBE,
+    SPEAKER_STOP,
+    SPEAKER_WARNING,
+    SPEAKER_DOG_BARK,
+    BUZZER_BEEP,
+    BUZZER_OFF,
 )
 
 
@@ -349,7 +365,7 @@ class TestTurretAiming:
 
         pan_sent = [c for c in configs if c[0] == SERVO_PAN_KEY]
         tilt_sent = [c for c in configs if c[0] == SERVO_TILT_KEY]
-        assert pan_sent[0][1] == 0    # left edge → 0°
+        assert pan_sent[0][1] == 0  # left edge → 0°
         assert tilt_sent[0][1] == SERVO_TILT_MAX_DEG  # top → look up
 
     def test_aim_from_frame_bottom_right(self):
@@ -435,8 +451,12 @@ class TestDeterrentConstants:
 
     def test_protocol_config_keys_unique(self):
         keys = [
-            SIREN_CONFIG_KEY, SPOTLIGHT_CONFIG_KEY, LASER_CONFIG_KEY,
-            SERVO_PAN_KEY, SERVO_TILT_KEY, SPEAKER_CONFIG_KEY,
+            SIREN_CONFIG_KEY,
+            SPOTLIGHT_CONFIG_KEY,
+            LASER_CONFIG_KEY,
+            SERVO_PAN_KEY,
+            SERVO_TILT_KEY,
+            SPEAKER_CONFIG_KEY,
             BUZZER_CONFIG_KEY,
         ]
         assert len(keys) == len(set(keys))

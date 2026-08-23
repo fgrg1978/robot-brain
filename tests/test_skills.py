@@ -1,8 +1,12 @@
 """Tests for planner/skills.py — skill catalog per robot type."""
 
 from planner.skills import (
-    get_skills, skill_list_prompt,
-    UNIVERSAL_SKILLS, WHEELED_SKILLS, DRONE_SKILLS, HUMANOID_SKILLS,
+    get_skills,
+    skill_list_prompt,
+    UNIVERSAL_SKILLS,
+    WHEELED_SKILLS,
+    DRONE_SKILLS,
+    HUMANOID_SKILLS,
     ROBOT_SKILLS,
 )
 

@@ -30,7 +30,7 @@ logger = logging.getLogger("brain.transport")
 # ---------------------------------------------------------------------------
 CONNECT_TIMEOUT_S = 5.0
 RECONNECT_DELAY_S = 3.0
-LINK_HEALTH_TIMEOUT_S = 10.0      # link considered dead after no data
+LINK_HEALTH_TIMEOUT_S = 10.0  # link considered dead after no data
 MAX_SEND_RETRIES = 2
 
 
@@ -38,12 +38,13 @@ MAX_SEND_RETRIES = 2
 # Transport link interface
 # ---------------------------------------------------------------------------
 
+
 class TransportLink(ABC):
     """Abstract base for a communication link."""
 
     def __init__(self, name: str, priority: int = 0):
         self.name = name
-        self.priority = priority     # lower = preferred
+        self.priority = priority  # lower = preferred
         self.connected = False
         self.bytes_sent = 0
         self.bytes_recv = 0
@@ -51,20 +52,16 @@ class TransportLink(ABC):
         self.errors = 0
 
     @abstractmethod
-    async def connect(self) -> bool:
-        ...
+    async def connect(self) -> bool: ...
 
     @abstractmethod
-    async def disconnect(self):
-        ...
+    async def disconnect(self): ...
 
     @abstractmethod
-    async def send(self, data: bytes) -> bool:
-        ...
+    async def send(self, data: bytes) -> bool: ...
 
     @abstractmethod
-    async def recv(self, max_bytes: int = 4096) -> bytes:
-        ...
+    async def recv(self, max_bytes: int = 4096) -> bytes: ...
 
     @property
     def healthy(self) -> bool:
@@ -78,6 +75,7 @@ class TransportLink(ABC):
 # ---------------------------------------------------------------------------
 # TCP link
 # ---------------------------------------------------------------------------
+
 
 class TcpLink(TransportLink):
     """TCP transport (Ethernet or WiFi)."""
@@ -96,8 +94,7 @@ class TcpLink(TransportLink):
                 timeout=CONNECT_TIMEOUT_S,
             )
             self.connected = True
-            logger.info("[Transport] TCP connected to %s:%d",
-                       self._host, self._port)
+            logger.info("[Transport] TCP connected to %s:%d", self._host, self._port)
             return True
         except Exception as e:
             logger.debug("[Transport] TCP connect failed: %s", e)
@@ -152,6 +149,7 @@ class TcpLink(TransportLink):
 # Serial link
 # ---------------------------------------------------------------------------
 
+
 class SerialLink(TransportLink):
     """Serial/UART transport (direct or via USB-serial adapter)."""
 
@@ -164,12 +162,14 @@ class SerialLink(TransportLink):
     async def connect(self) -> bool:
         try:
             import serial
+
             self._serial = serial.Serial(
-                self._port, self._baud, timeout=0.1,
+                self._port,
+                self._baud,
+                timeout=0.1,
             )
             self.connected = True
-            logger.info("[Transport] Serial connected to %s @ %d",
-                       self._port, self._baud)
+            logger.info("[Transport] Serial connected to %s @ %d", self._port, self._baud)
             return True
         except ImportError:
             logger.error("[Transport] pyserial not installed")
@@ -203,7 +203,8 @@ class SerialLink(TransportLink):
             return b""
         try:
             data = await asyncio.to_thread(
-                self._serial.read, min(max_bytes, self._serial.in_waiting or 1),
+                self._serial.read,
+                min(max_bytes, self._serial.in_waiting or 1),
             )
             if data:
                 self.bytes_recv += len(data)
@@ -216,6 +217,7 @@ class SerialLink(TransportLink):
 # ---------------------------------------------------------------------------
 # UDP link
 # ---------------------------------------------------------------------------
+
 
 class UdpLink(TransportLink):
     """UDP transport (connectionless, for telemetry or LoRa bridges)."""
@@ -262,6 +264,7 @@ class UdpLink(TransportLink):
 # ---------------------------------------------------------------------------
 # TransportManager — multi-link with failover
 # ---------------------------------------------------------------------------
+
 
 class TransportManager:
     """Manages multiple transport links with automatic failover."""

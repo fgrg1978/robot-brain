@@ -14,16 +14,22 @@ import asyncio
 import time
 
 from transport import (
-    LinkAdapter, LinkStats,
+    LinkAdapter,
+    LinkStats,
     MultiLinkClient,
-    WiFiAdapter, LoRaAdapter, RFAdapter,
+    WiFiAdapter,
+    LoRaAdapter,
+    RFAdapter,
     TRANSPORT_FAILOVER_TIMEOUT_S,
     LINK_PROBE_INTERVAL_S,
     TRANSPORT_MAX_CONSEC_FAILURES,
-    LINK_QUALITY_DOWN, LINK_QUALITY_GOOD, LINK_QUALITY_UNKNOWN,
-    WIFI_DEFAULT_PRIORITY, LORA_DEFAULT_PRIORITY, RF_DEFAULT_PRIORITY,
+    LINK_QUALITY_DOWN,
+    LINK_QUALITY_GOOD,
+    LINK_QUALITY_UNKNOWN,
+    WIFI_DEFAULT_PRIORITY,
+    LORA_DEFAULT_PRIORITY,
+    RF_DEFAULT_PRIORITY,
 )
-
 
 # ---------------------------------------------------------------------------
 # Mock adapter: deterministic, used throughout
@@ -31,8 +37,7 @@ from transport import (
 
 
 class MockAdapter(LinkAdapter):
-    def __init__(self, name: str, priority: int,
-                 up: bool = True, send_ok: bool = True):
+    def __init__(self, name: str, priority: int, up: bool = True, send_ok: bool = True):
         super().__init__(name=name, priority=priority)
         self._up = up
         self._send_ok = send_ok
@@ -161,6 +166,7 @@ class TestHappyPath:
             assert await c.connect_all()
             assert c.active_link is not None
             assert c.active_link.name == "wifi"
+
         asyncio.run(_run())
 
     def test_connect_all_skips_down_primary(self):
@@ -170,12 +176,14 @@ class TestHappyPath:
             c.add_link(MockAdapter("lora", priority=10, up=True))
             assert await c.connect_all()
             assert c.active_link.name == "lora"
+
         asyncio.run(_run())
 
     def test_connect_all_no_links(self):
         async def _run():
             c = MultiLinkClient()
             assert not await c.connect_all()
+
         asyncio.run(_run())
 
     def test_send_via_primary(self):
@@ -187,6 +195,7 @@ class TestHappyPath:
             assert await c.send(b"hello")
             assert c.active_link.name == "wifi"
             assert c._links[0].stats.sent_bytes == 5
+
         asyncio.run(_run())
 
     def test_recv_from_primary(self):
@@ -198,6 +207,7 @@ class TestHappyPath:
             await c.connect_all()
             data = await c.recv()
             assert data == b"packet"
+
         asyncio.run(_run())
 
 
@@ -234,6 +244,7 @@ class TestFailover:
             wifi.set_up(False)
             assert await c.send(b"x")
             assert c.active_link.name == "lora"
+
         asyncio.run(_run())
 
     def test_failover_fails_when_all_down(self):
@@ -243,6 +254,7 @@ class TestFailover:
             c.add_link(MockAdapter("lora", priority=10, up=False))
             await c.connect_all()
             assert not await c.send(b"x")
+
         asyncio.run(_run())
 
 
@@ -301,6 +313,7 @@ class TestFailback:
             wifi.stats.last_probe_ts = time.time() - (LINK_PROBE_INTERVAL_S + 1)
             await c._maybe_failback()
             assert c.active_link.name == "wifi"
+
         asyncio.run(_run())
 
     def test_no_failback_before_probe_interval(self):
@@ -316,6 +329,7 @@ class TestFailback:
             await c._maybe_failback()
             # Still on lora because we haven't waited long enough.
             assert c.active_link.name == "lora"
+
         asyncio.run(_run())
 
 
@@ -339,6 +353,7 @@ class TestStatus:
                 assert "quality" in l
                 assert "up" in l
                 assert "consec_failures" in l
+
         asyncio.run(_run())
 
     def test_status_empty_client(self):

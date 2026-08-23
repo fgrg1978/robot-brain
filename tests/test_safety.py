@@ -2,21 +2,29 @@
 
 import sys
 import os
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from protocol import (
-    SensorPacket, SensorPacketDrone, SensorPacketHumanoid,
-    ROBOT_WHEELED, ROBOT_DRONE, ROBOT_HUMANOID, ROBOT_ACKERMANN,
+    SensorPacket,
+    SensorPacketDrone,
+    SensorPacketHumanoid,
+    ROBOT_WHEELED,
+    ROBOT_DRONE,
+    ROBOT_HUMANOID,
+    ROBOT_ACKERMANN,
 )
 from policy.safety import (
     SafetyProfile,
-    DEFAULT_MIN_BATTERY_MV, DEFAULT_OBSTACLE_STOP_MM,
-    DEFAULT_DRONE_MIN_BATTERY_MV, DEFAULT_DRONE_MAX_ALTITUDE_M,
-    DEFAULT_DRONE_LOW_BATTERY_RTL_MV, DEFAULT_DRONE_CRITICAL_BATTERY_LAND_MV,
+    DEFAULT_MIN_BATTERY_MV,
+    DEFAULT_OBSTACLE_STOP_MM,
+    DEFAULT_DRONE_MIN_BATTERY_MV,
+    DEFAULT_DRONE_MAX_ALTITUDE_M,
+    DEFAULT_DRONE_LOW_BATTERY_RTL_MV,
+    DEFAULT_DRONE_CRITICAL_BATTERY_LAND_MV,
     DEFAULT_DRONE_MIN_SATELLITES,
     DEFAULT_FALL_DETECT_THRESHOLD,
 )
-
 
 # ── Config fixtures ──────────────────────────────────────────────────────────
 
@@ -54,36 +62,51 @@ CONFIG_EMPTY = {}
 
 # ── Sensor packet helpers ────────────────────────────────────────────────────
 
+
 def _wheeled_pkt(battery_mv=8000, range_front_mm=500, accel_mg=(0, 0, 1000)):
     return SensorPacket(
-        timestamp_ms=0, battery_mv=battery_mv,
-        accel_mg=accel_mg, gyro_mdps=(0, 0, 0),
-        odom_dist_mm=0, odom_hdg_cdeg=0,
-        encoder_l=0, encoder_r=0,
-        range_front_mm=range_front_mm, range_right_mm=500,
+        timestamp_ms=0,
+        battery_mv=battery_mv,
+        accel_mg=accel_mg,
+        gyro_mdps=(0, 0, 0),
+        odom_dist_mm=0,
+        odom_hdg_cdeg=0,
+        encoder_l=0,
+        encoder_r=0,
+        range_front_mm=range_front_mm,
+        range_right_mm=500,
     )
 
 
-def _drone_pkt(battery_mv=8000, gps_alt_cm=1000, gps_lat=1, gps_lon=1,
-               accel_mg=(0, 0, 1000)):
+def _drone_pkt(battery_mv=8000, gps_alt_cm=1000, gps_lat=1, gps_lon=1, accel_mg=(0, 0, 1000)):
     return SensorPacketDrone(
-        timestamp_ms=0, battery_mv=battery_mv,
-        accel_mg=accel_mg, gyro_mdps=(0, 0, 0),
-        baro_pa=101325, mag_ut=(200, 50, 400),
-        gps_lat_deg7=gps_lat, gps_lon_deg7=gps_lon,
-        gps_alt_cm=gps_alt_cm, sonar_down_mm=100,
+        timestamp_ms=0,
+        battery_mv=battery_mv,
+        accel_mg=accel_mg,
+        gyro_mdps=(0, 0, 0),
+        baro_pa=101325,
+        mag_ut=(200, 50, 400),
+        gps_lat_deg7=gps_lat,
+        gps_lon_deg7=gps_lon,
+        gps_alt_cm=gps_alt_cm,
+        sonar_down_mm=100,
     )
 
 
 def _humanoid_pkt(battery_mv=8000, accel_mg=(0, 0, 1000)):
     return SensorPacketHumanoid(
-        timestamp_ms=0, battery_mv=battery_mv,
-        accel_mg=accel_mg, gyro_mdps=(0, 0, 0),
-        joint_angles=[0] * 12, foot_pressure_l=500, foot_pressure_r=500,
+        timestamp_ms=0,
+        battery_mv=battery_mv,
+        accel_mg=accel_mg,
+        gyro_mdps=(0, 0, 0),
+        joint_angles=[0] * 12,
+        foot_pressure_l=500,
+        foot_pressure_r=500,
     )
 
 
 # ── Factory method tests ─────────────────────────────────────────────────────
+
 
 def test_wheeled_factory_defaults():
     p = SafetyProfile.wheeled(CONFIG_EMPTY)
@@ -140,6 +163,7 @@ def test_for_robot_type_dispatches():
 
 # ── Legacy flat config backward compat ───────────────────────────────────────
 
+
 def test_flat_config_falls_back():
     """When config has flat safety: section (no per-type), use it as wheeled defaults."""
     p = SafetyProfile.wheeled(CONFIG_FLAT_LEGACY)
@@ -148,6 +172,7 @@ def test_flat_config_falls_back():
 
 
 # ── Wheeled safety checks ───────────────────────────────────────────────────
+
 
 def test_wheeled_safe():
     p = SafetyProfile.wheeled(CONFIG_EMPTY)
@@ -180,6 +205,7 @@ def test_wheeled_tilt():
 
 
 # ── Drone safety checks ─────────────────────────────────────────────────────
+
 
 def test_drone_safe():
     p = SafetyProfile.drone(CONFIG_EMPTY)
@@ -240,6 +266,7 @@ def test_drone_stricter_than_wheeled():
 
 # ── Humanoid safety checks ──────────────────────────────────────────────────
 
+
 def test_humanoid_safe():
     p = SafetyProfile.humanoid(CONFIG_EMPTY)
     pkt = _humanoid_pkt(battery_mv=8000)
@@ -263,6 +290,7 @@ def test_humanoid_low_battery():
 
 # ── Multiple violations ─────────────────────────────────────────────────────
 
+
 def test_multiple_violations_reported():
     """All violations should be reported, not just the first one."""
     p = SafetyProfile.wheeled(CONFIG_EMPTY)
@@ -272,6 +300,7 @@ def test_multiple_violations_reported():
 
 
 # ── check() dispatches correctly ─────────────────────────────────────────────
+
 
 def test_check_dispatches_by_type():
     """check() should call the right method based on robot_type."""

@@ -11,10 +11,10 @@ from planner.fleet import (
     DISPATCH_COOLDOWN_S,
 )
 
-
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
+
 
 class TestConstants:
     def test_heartbeat_timeout_positive(self):
@@ -31,6 +31,7 @@ class TestConstants:
 # RobotEntry
 # ---------------------------------------------------------------------------
 
+
 class TestRobotEntry:
     def test_defaults(self):
         r = RobotEntry(robot_id="bot1")
@@ -44,6 +45,7 @@ class TestRobotEntry:
 # ---------------------------------------------------------------------------
 # FleetPlanner — registration
 # ---------------------------------------------------------------------------
+
 
 class TestFleetRegistration:
     def test_register(self):
@@ -84,6 +86,7 @@ class TestFleetRegistration:
 # FleetPlanner — heartbeat
 # ---------------------------------------------------------------------------
 
+
 class TestFleetHeartbeat:
     def test_heartbeat_sets_online(self):
         fp = FleetPlanner()
@@ -113,9 +116,7 @@ class TestFleetHeartbeat:
         fp = FleetPlanner()
         fp.register("r1")
         fp.heartbeat("r1")
-        fp.get_robot("r1").last_heartbeat = (
-            time.monotonic() - ROBOT_HEARTBEAT_TIMEOUT_S - 1
-        )
+        fp.get_robot("r1").last_heartbeat = time.monotonic() - ROBOT_HEARTBEAT_TIMEOUT_S - 1
         offline = fp.check_timeouts()
         assert "r1" in offline
         assert not fp.get_robot("r1").online
@@ -132,6 +133,7 @@ class TestFleetHeartbeat:
 # ---------------------------------------------------------------------------
 # FleetPlanner — zone assignment
 # ---------------------------------------------------------------------------
+
 
 class TestFleetZones:
     def test_assign_zone(self):
@@ -183,6 +185,7 @@ class TestFleetZones:
 # ---------------------------------------------------------------------------
 # FleetPlanner — dispatch
 # ---------------------------------------------------------------------------
+
 
 class TestFleetDispatch:
     def test_dispatch_nearest(self):
@@ -259,6 +262,7 @@ class TestFleetDispatch:
 # FleetPlanner — queries
 # ---------------------------------------------------------------------------
 
+
 class TestFleetQueries:
     def test_all_robots(self):
         fp = FleetPlanner()
@@ -293,6 +297,7 @@ class TestFleetQueries:
 # ---------------------------------------------------------------------------
 # FleetPlanner — config loading
 # ---------------------------------------------------------------------------
+
 
 class TestFleetConfig:
     def test_load_from_config(self):

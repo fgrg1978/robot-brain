@@ -7,22 +7,33 @@ Tests the full packet pipeline:
 import asyncio
 import sys
 import os
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import protocol
 from protocol import (
-    build_packet, parse_packet,
-    SensorPacket, StatusPacket, ActuatorCmd,
-    SENSOR_PACKET, STATUS, ACTUATOR_CMD,
-    ROBOT_WHEELED, FLAG_EMERGENCY,
+    build_packet,
+    parse_packet,
+    SensorPacket,
+    StatusPacket,
+    ActuatorCmd,
+    SENSOR_PACKET,
+    STATUS,
+    ACTUATOR_CMD,
+    ROBOT_WHEELED,
+    FLAG_EMERGENCY,
 )
 from tools.sitl.sitl_wheeled import RobotSim, World
 
-
 # ── Mock brain: just echoes a fixed ActuatorCmd on every SensorPacket ─────────
 
-async def _mock_brain(reader: asyncio.StreamReader, writer: asyncio.StreamWriter,
-                      responses: list[ActuatorCmd], received_packets: list):
+
+async def _mock_brain(
+    reader: asyncio.StreamReader,
+    writer: asyncio.StreamWriter,
+    responses: list[ActuatorCmd],
+    received_packets: list,
+):
     """Fake server that records sensor packets and sends canned responses."""
     try:
         while True:
@@ -37,7 +48,7 @@ async def _mock_brain(reader: asyncio.StreamReader, writer: asyncio.StreamWriter
                 await protocol.send_packet(writer, ACTUATOR_CMD, cmd.to_bytes())
 
             if not responses and pkt_type == SENSOR_PACKET:
-                break   # done — close connection
+                break  # done — close connection
     except (asyncio.TimeoutError, asyncio.IncompleteReadError):
         pass
     finally:
@@ -46,21 +57,21 @@ async def _mock_brain(reader: asyncio.StreamReader, writer: asyncio.StreamWriter
 
 # ── Tests ─────────────────────────────────────────────────────────────────────
 
+
 def test_sensor_packet_sent_to_server():
     """Robot sends SensorPackets; server receives them."""
 
     received = []
-    responses = [ActuatorCmd.stop(n_channels=2)]   # one response then done
+    responses = [ActuatorCmd.stop(n_channels=2)]  # one response then done
 
     async def run():
         server = await asyncio.start_server(
-            lambda r, w: _mock_brain(r, w, responses, received),
-            "127.0.0.1", 0
+            lambda r, w: _mock_brain(r, w, responses, received), "127.0.0.1", 0
         )
         port = server.sockets[0].getsockname()[1]
 
-        world  = World(obstacles=[])
-        robot  = RobotSim(world, 1000, 1000, 0)
+        world = World(obstacles=[])
+        robot = RobotSim(world, 1000, 1000, 0)
 
         async with server:
             reader, writer = await asyncio.open_connection("127.0.0.1", port)
@@ -98,8 +109,7 @@ def test_actuator_cmd_applied_to_robot():
 
     async def run():
         server = await asyncio.start_server(
-            lambda r, w: _mock_brain(r, w, responses, []),
-            "127.0.0.1", 0
+            lambda r, w: _mock_brain(r, w, responses, []), "127.0.0.1", 0
         )
         port = server.sockets[0].getsockname()[1]
         world = World(obstacles=[])
@@ -130,8 +140,7 @@ def test_emergency_stop_cmd_from_server():
 
     async def run():
         server = await asyncio.start_server(
-            lambda r, w: _mock_brain(r, w, responses, []),
-            "127.0.0.1", 0
+            lambda r, w: _mock_brain(r, w, responses, []), "127.0.0.1", 0
         )
         port = server.sockets[0].getsockname()[1]
         world = World(obstacles=[])
@@ -160,32 +169,32 @@ def test_emergency_stop_cmd_from_server():
 
 def test_status_packet_roundtrip():
     """StatusPacket serialization survives the wire."""
-    world  = World(obstacles=[])
-    robot  = RobotSim(world, 0, 0, 0)
-    st     = robot.status_packet()
-    data   = st.to_bytes()
-    st2    = StatusPacket.from_bytes(data)
+    world = World(obstacles=[])
+    robot = RobotSim(world, 0, 0, 0)
+    st = robot.status_packet()
+    data = st.to_bytes()
+    st2 = StatusPacket.from_bytes(data)
     assert st2.robot_type == ROBOT_WHEELED
     assert st2.tasks_ok == st.tasks_ok
 
 
 def test_sensor_packet_values_preserved():
     """SensorPacket values are preserved through serialization."""
-    world  = World(obstacles=[], width_mm=5000, height_mm=5000)
-    robot  = RobotSim(world, 2500, 2500, 0)
+    world = World(obstacles=[], width_mm=5000, height_mm=5000)
+    robot = RobotSim(world, 2500, 2500, 0)
     # Set known values
-    robot.battery_mv   = 7200.0
-    robot.enc_l        = 12345
-    robot.enc_r        = 12300
+    robot.battery_mv = 7200.0
+    robot.enc_l = 12345
+    robot.enc_r = 12300
     robot.odom_dist_mm = 1000
 
-    sp   = robot.sensor_packet()
+    sp = robot.sensor_packet()
     data = sp.to_bytes()
-    sp2  = SensorPacket.from_bytes(data)
+    sp2 = SensorPacket.from_bytes(data)
 
     assert sp2.battery_mv == 7200
-    assert sp2.encoder_l  == 12345
-    assert sp2.encoder_r  == 12300
+    assert sp2.encoder_l == 12345
+    assert sp2.encoder_r == 12300
     assert sp2.odom_dist_mm == 1000
 
 

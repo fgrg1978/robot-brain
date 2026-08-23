@@ -23,15 +23,15 @@ logger = logging.getLogger("brain.tracker")
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
-TRACKING_DISTANCE_MM = 2000       # maintain this distance from intruder
-TRACKING_TIMEOUT_S = 60           # stop tracking after this long
-TARGET_LOST_TIMEOUT_S = 10        # give up if target lost for this long
+TRACKING_DISTANCE_MM = 2000  # maintain this distance from intruder
+TRACKING_TIMEOUT_S = 60  # stop tracking after this long
+TARGET_LOST_TIMEOUT_S = 10  # give up if target lost for this long
 TRACKING_APPROACH_SPEED_PCT = 30  # speed when approaching
-TRACKING_FOLLOW_SPEED_PCT = 25    # speed when at distance
-TRACKING_TURN_SPEED_PCT = 35      # speed for turning toward target
-TRACKING_CLOSE_RANGE_MM = 1000    # stop approaching if closer than this
-TRACKING_FAR_RANGE_MM = 4000      # faster approach if farther than this
-TRACKING_MAX_FRAMES = 100         # max evidence frames to collect
+TRACKING_FOLLOW_SPEED_PCT = 25  # speed when at distance
+TRACKING_TURN_SPEED_PCT = 35  # speed for turning toward target
+TRACKING_CLOSE_RANGE_MM = 1000  # stop approaching if closer than this
+TRACKING_FAR_RANGE_MM = 4000  # faster approach if farther than this
+TRACKING_MAX_FRAMES = 100  # max evidence frames to collect
 
 # VLM position labels
 POSITION_LEFT = "left"
@@ -45,17 +45,19 @@ VALID_POSITIONS = {POSITION_LEFT, POSITION_CENTER, POSITION_RIGHT}
 # State
 # ---------------------------------------------------------------------------
 
+
 class TrackState(enum.Enum):
     IDLE = "idle"
-    ACQUIRING = "acquiring"     # first detection, turning toward target
-    TRACKING = "tracking"       # following target
-    LOST = "lost"               # target disappeared, searching
-    TIMEOUT = "timeout"         # tracking timed out
+    ACQUIRING = "acquiring"  # first detection, turning toward target
+    TRACKING = "tracking"  # following target
+    LOST = "lost"  # target disappeared, searching
+    TIMEOUT = "timeout"  # tracking timed out
 
 
 # ---------------------------------------------------------------------------
 # IntrusionTracker
 # ---------------------------------------------------------------------------
+
 
 class IntrusionTracker:
     """Tracks a detected intruder using VLM position feedback."""
@@ -74,7 +76,9 @@ class IntrusionTracker:
     @property
     def active(self) -> bool:
         return self.state in (
-            TrackState.ACQUIRING, TrackState.TRACKING, TrackState.LOST,
+            TrackState.ACQUIRING,
+            TrackState.TRACKING,
+            TrackState.LOST,
         )
 
     @property
@@ -107,7 +111,8 @@ class IntrusionTracker:
         if self.active:
             logger.info(
                 "[Tracker] Stopped after %.1fs, %d updates",
-                self.tracking_time_s, self._updates,
+                self.tracking_time_s,
+                self._updates,
             )
         self.state = TrackState.IDLE
         self._target_label = ""
@@ -193,14 +198,22 @@ class IntrusionTracker:
         """Generate motor command based on target position and distance."""
         # Turn toward target if not centered
         if position == POSITION_LEFT:
-            return {"skill": "TURN_LEFT", "args": {
-                "degrees": 20, "speed": TRACKING_TURN_SPEED_PCT,
-            }}
+            return {
+                "skill": "TURN_LEFT",
+                "args": {
+                    "degrees": 20,
+                    "speed": TRACKING_TURN_SPEED_PCT,
+                },
+            }
 
         if position == POSITION_RIGHT:
-            return {"skill": "TURN_RIGHT", "args": {
-                "degrees": 20, "speed": TRACKING_TURN_SPEED_PCT,
-            }}
+            return {
+                "skill": "TURN_RIGHT",
+                "args": {
+                    "degrees": 20,
+                    "speed": TRACKING_TURN_SPEED_PCT,
+                },
+            }
 
         # Target is centered — approach or maintain distance
         if distance_mm > 0 and distance_mm <= TRACKING_CLOSE_RANGE_MM:
@@ -209,14 +222,20 @@ class IntrusionTracker:
 
         if distance_mm > TRACKING_FAR_RANGE_MM:
             # Far away — faster approach
-            return {"skill": "FORWARD", "args": {
-                "speed": TRACKING_APPROACH_SPEED_PCT,
-            }}
+            return {
+                "skill": "FORWARD",
+                "args": {
+                    "speed": TRACKING_APPROACH_SPEED_PCT,
+                },
+            }
 
         # At tracking distance — slow follow
-        return {"skill": "FORWARD", "args": {
-            "speed": TRACKING_FOLLOW_SPEED_PCT,
-        }}
+        return {
+            "skill": "FORWARD",
+            "args": {
+                "speed": TRACKING_FOLLOW_SPEED_PCT,
+            },
+        }
 
     # ── Status ────────────────────────────────────────────────────────────
 

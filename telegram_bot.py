@@ -29,10 +29,11 @@ if TYPE_CHECKING:
 
 # ── Telegram API helpers ──────────────────────────────────────────────────────
 
+
 def _tg_request(bot_token: str, method: str, payload: dict) -> dict:
-    url  = f"https://api.telegram.org/bot{bot_token}/{method}"
+    url = f"https://api.telegram.org/bot{bot_token}/{method}"
     data = json.dumps(payload).encode()
-    req  = urllib.request.Request(url, data=data, method="POST")
+    req = urllib.request.Request(url, data=data, method="POST")
     req.add_header("Content-Type", "application/json")
     try:
         with urllib.request.urlopen(req, timeout=10) as resp:
@@ -42,13 +43,15 @@ def _tg_request(bot_token: str, method: str, payload: dict) -> dict:
 
 
 def _tg_send_text(bot_token: str, chat_id: str, text: str) -> bool:
-    r = _tg_request(bot_token, "sendMessage",
-                    {"chat_id": chat_id, "text": text, "parse_mode": "HTML"})
+    r = _tg_request(
+        bot_token, "sendMessage", {"chat_id": chat_id, "text": text, "parse_mode": "HTML"}
+    )
     return r.get("ok", False)
 
 
 def _tg_send_photo(bot_token: str, chat_id: str, image: bytes, caption: str = "") -> bool:
     import io
+
     boundary = b"----TGBotBoundary"
     body = io.BytesIO()
 
@@ -77,8 +80,11 @@ def _tg_send_photo(bot_token: str, chat_id: str, image: bytes, caption: str = ""
 
 
 def _tg_get_updates(bot_token: str, offset: int, timeout: int = 25) -> list[dict]:
-    r = _tg_request(bot_token, "getUpdates",
-                    {"offset": offset, "timeout": timeout, "allowed_updates": ["message"]})
+    r = _tg_request(
+        bot_token,
+        "getUpdates",
+        {"offset": offset, "timeout": timeout, "allowed_updates": ["message"]},
+    )
     if r.get("ok"):
         return r.get("result", [])
     return []
@@ -86,10 +92,11 @@ def _tg_get_updates(bot_token: str, offset: int, timeout: int = 25) -> list[dict
 
 # ── Bot ───────────────────────────────────────────────────────────────────────
 
+
 class TelegramBot:
     """Long-poll Telegram bot connected to a BrainServer instance."""
 
-    POLL_TIMEOUT = 25   # seconds — Telegram long-poll window
+    POLL_TIMEOUT = 25  # seconds — Telegram long-poll window
 
     def __init__(self, tg_config: dict, brain: "BrainServer"):
         # Token: prefer env var so the actual secret never lives in a
@@ -97,11 +104,12 @@ class TelegramBot:
         # committed. Falls back to config for backwards compatibility.
         # Chat-id is not secret — keep config support for it.
         import os as _os
-        self.token   = _os.environ.get("ROBOT_BRAIN_TG_BOT_TOKEN", "") \
-                       or tg_config.get("bot_token", "")
-        self.chat_id = _os.environ.get("ROBOT_BRAIN_TG_CHAT_ID", "") \
-                       or tg_config.get("chat_id", "")
-        self.brain   = brain
+
+        self.token = _os.environ.get("ROBOT_BRAIN_TG_BOT_TOKEN", "") or tg_config.get(
+            "bot_token", ""
+        )
+        self.chat_id = _os.environ.get("ROBOT_BRAIN_TG_CHAT_ID", "") or tg_config.get("chat_id", "")
+        self.brain = brain
         self._offset = 0
         self._running = False
 
@@ -204,8 +212,8 @@ class TelegramBot:
     def _format_status(self) -> str:
         s = self.brain.state
         sensors = s.sensors
-        odom    = s.odom
-        status  = s.status
+        odom = s.odom
+        status = s.status
         lines = [
             f"<b>Robot Status</b>",
             f"Connected: {'yes' if s.connected else 'no'}",
@@ -220,21 +228,19 @@ class TelegramBot:
         return "\n".join(lines)
 
     async def _do_stop(self):
-        from protocol import ActuatorCmd
-        cmd = ActuatorCmd.stop(n_channels=2)
-        if hasattr(self.brain, 'runner') and self.brain.runner:
-            self.brain.runner.interrupt("Telegram /stop")
-        # Best-effort: send directly if writer is available
-        writer = getattr(self.brain, '_writer', None)
-        if writer:
-            import protocol
-            await protocol.send_packet(writer, 0x80, cmd.to_bytes())
+        # Robot-type-aware central stop (a drone must HOVER, not receive a
+        # hardcoded diff-drive n_channels=2 zero frame) — see
+        # BrainServer.emergency_stop(). runner.interrupt() is handled inside
+        # emergency_stop() itself, so it isn't duplicated here.
+        had_writer = getattr(self.brain, "_writer", None) is not None
+        await self.brain.emergency_stop("Telegram /stop")
+        if had_writer:
             await self._reply("Emergency stop sent.")
         else:
             await self._reply("Stop queued (no active connection).")
 
     async def _do_mode(self, name: str):
-        if hasattr(self.brain, 'mode_manager'):
+        if hasattr(self.brain, "mode_manager"):
             ok = self.brain.mode_manager.set_mode(name)
             if ok:
                 await self._reply(f"Mode switched to <b>{name}</b>")
@@ -245,7 +251,7 @@ class TelegramBot:
             await self._reply("Mode manager not available.")
 
     async def _do_task(self, description: str):
-        if hasattr(self.brain, 'task_queue'):
+        if hasattr(self.brain, "task_queue"):
             await self.brain.task_queue.put(description)
             await self._reply(f"Task queued: <i>{description}</i>")
         else:

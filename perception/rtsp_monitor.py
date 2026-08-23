@@ -28,9 +28,9 @@ logger = logging.getLogger("brain.rtsp")
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
-DEFAULT_SCAN_INTERVAL_S = 10.0    # seconds between RTSP frame grabs
-RTSP_CAPTURE_TIMEOUT_S = 5.0     # max time to grab one frame
-RTSP_RECONNECT_DELAY_S = 10.0    # delay before retrying failed camera
+DEFAULT_SCAN_INTERVAL_S = 10.0  # seconds between RTSP frame grabs
+RTSP_CAPTURE_TIMEOUT_S = 5.0  # max time to grab one frame
+RTSP_RECONNECT_DELAY_S = 10.0  # delay before retrying failed camera
 RTSP_MAX_CONSECUTIVE_ERRORS = 5  # stop retrying after this many failures
 
 
@@ -40,6 +40,7 @@ RTSP_MAX_CONSECUTIVE_ERRORS = 5  # stop retrying after this many failures
 @dataclass
 class RtspCamera:
     """Configuration for one RTSP camera."""
+
     name: str
     url: str
     zone_waypoint: str = ""
@@ -51,6 +52,7 @@ class RtspCamera:
 @dataclass
 class RtspEvent:
     """A confirmed detection from an RTSP camera."""
+
     camera_name: str
     zone_waypoint: str
     motion_score: float
@@ -69,7 +71,7 @@ class RtspMonitor:
     def __init__(
         self,
         cameras: list[RtspCamera],
-        vision=None,                  # VisionPerception (optional, for VLM)
+        vision=None,  # VisionPerception (optional, for VLM)
         on_threat: Optional[Callable[[RtspEvent], Awaitable[None]]] = None,
         detect_labels: list[str] | None = None,
     ):
@@ -77,7 +79,10 @@ class RtspMonitor:
         self._vision = vision
         self._on_threat = on_threat
         self._detect_labels = detect_labels or [
-            "person", "vehicle", "fire", "smoke",
+            "person",
+            "vehicle",
+            "fire",
+            "smoke",
         ]
         self._detectors: dict[str, MotionDetector] = {}
         self._tasks: list[asyncio.Task] = []
@@ -158,7 +163,8 @@ class RtspMonitor:
                     if consecutive_errors >= RTSP_MAX_CONSECUTIVE_ERRORS:
                         logger.error(
                             "[RTSP] Camera '%s': %d consecutive errors, pausing",
-                            cam.name, consecutive_errors,
+                            cam.name,
+                            consecutive_errors,
                         )
                         await asyncio.sleep(RTSP_RECONNECT_DELAY_S)
                         consecutive_errors = 0
@@ -177,7 +183,9 @@ class RtspMonitor:
                     self._stats[cam.name]["last_motion"] = time.time()
                     logger.info(
                         "[RTSP] Motion on '%s': %.1f%% (threshold %d%%)",
-                        cam.name, score, cam.motion_threshold_pct,
+                        cam.name,
+                        score,
+                        cam.motion_threshold_pct,
                     )
 
                     # VLM analysis
@@ -222,7 +230,10 @@ class RtspMonitor:
     # ── VLM analysis ──────────────────────────────────────────────────────
 
     async def _analyze_with_vlm(
-        self, cam: RtspCamera, frame: bytes, motion_score: float,
+        self,
+        cam: RtspCamera,
+        frame: bytes,
+        motion_score: float,
     ) -> RtspEvent | None:
         """Run VLM on a frame with motion detected. Returns event if threat found."""
         if not self._vision:
@@ -239,7 +250,9 @@ class RtspMonitor:
         try:
             context = f"RTSP camera '{cam.name}', motion score {motion_score:.0f}%"
             description = await asyncio.to_thread(
-                self._vision.describe, frame, context,
+                self._vision.describe,
+                frame,
+                context,
             )
             logger.info("[RTSP] VLM@%s: %s", cam.name, description)
 
@@ -268,6 +281,7 @@ class RtspMonitor:
 # Frame capture backends
 # ---------------------------------------------------------------------------
 
+
 async def _capture_cv2(url: str) -> bytes | None:
     """Capture using OpenCV (runs in thread to avoid blocking)."""
     import cv2  # import here to fail fast if not installed
@@ -294,12 +308,18 @@ async def _capture_ffmpeg(url: str) -> bytes | None:
     """Capture a single frame using ffmpeg subprocess."""
     proc = await asyncio.create_subprocess_exec(
         "ffmpeg",
-        "-rtsp_transport", "tcp",
-        "-i", url,
-        "-frames:v", "1",
-        "-f", "image2pipe",
-        "-vcodec", "mjpeg",
-        "-q:v", "5",
+        "-rtsp_transport",
+        "tcp",
+        "-i",
+        url,
+        "-frames:v",
+        "1",
+        "-f",
+        "image2pipe",
+        "-vcodec",
+        "mjpeg",
+        "-q:v",
+        "5",
         "pipe:1",
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.DEVNULL,
@@ -321,17 +341,20 @@ async def _capture_ffmpeg(url: str) -> bytes | None:
 # Config loader
 # ---------------------------------------------------------------------------
 
+
 def cameras_from_config(config: dict) -> list[RtspCamera]:
     """Parse rtsp_cameras section from config.yaml into RtspCamera list."""
     raw = config.get("rtsp_cameras") or []
     cameras = []
     for entry in raw:
-        cameras.append(RtspCamera(
-            name=entry.get("name", f"cam_{len(cameras)}"),
-            url=entry.get("url", ""),
-            zone_waypoint=entry.get("zone_waypoint", ""),
-            scan_interval_s=float(entry.get("scan_interval_s", DEFAULT_SCAN_INTERVAL_S)),
-            motion_threshold_pct=int(entry.get("motion_threshold_pct", MOTION_THRESHOLD_PCT)),
-            enabled=entry.get("enabled", True),
-        ))
+        cameras.append(
+            RtspCamera(
+                name=entry.get("name", f"cam_{len(cameras)}"),
+                url=entry.get("url", ""),
+                zone_waypoint=entry.get("zone_waypoint", ""),
+                scan_interval_s=float(entry.get("scan_interval_s", DEFAULT_SCAN_INTERVAL_S)),
+                motion_threshold_pct=int(entry.get("motion_threshold_pct", MOTION_THRESHOLD_PCT)),
+                enabled=entry.get("enabled", True),
+            )
+        )
     return cameras

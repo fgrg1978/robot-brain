@@ -20,22 +20,22 @@ logger = logging.getLogger("brain.power")
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
-PATROL_SPEED_ECO_PCT = 25           # slower = less motor current
-PATROL_SPEED_ALERT_PCT = 50         # normal speed in alert
-LIDAR_HZ_ECO = 5                    # reduced scan rate
-LIDAR_HZ_ALERT = 10                 # full scan rate
-CAMERA_WARMUP_MS = 200              # CSI re-init time after power-on
-WIFI_BATCH_INTERVAL_S = 2           # ESP32 batch send in ECO
-ALERT_TIMEOUT_S = 120               # auto-return to ECO after no threat
-ALERT_CLEAR_COUNT = 3               # VLM must say CLEAR this many times
-LED_ECO_DUTY_PCT = 10               # dim green in ECO
-LED_ALERT_DUTY_PCT = 100            # full brightness in ALERT
+PATROL_SPEED_ECO_PCT = 25  # slower = less motor current
+PATROL_SPEED_ALERT_PCT = 50  # normal speed in alert
+LIDAR_HZ_ECO = 5  # reduced scan rate
+LIDAR_HZ_ALERT = 10  # full scan rate
+CAMERA_WARMUP_MS = 200  # CSI re-init time after power-on
+WIFI_BATCH_INTERVAL_S = 2  # ESP32 batch send in ECO
+ALERT_TIMEOUT_S = 120  # auto-return to ECO after no threat
+ALERT_CLEAR_COUNT = 3  # VLM must say CLEAR this many times
+LED_ECO_DUTY_PCT = 10  # dim green in ECO
+LED_ALERT_DUTY_PCT = 100  # full brightness in ALERT
 
 # CONFIG_CMD keys for power-related commands
-POWER_CONFIG_KEY = 0x11             # config key for power mode
-CAMERA_POWER_KEY = 0x12             # config key for camera GPIO
-WIFI_MODE_KEY = 0x13                # config key for ESP32 sleep mode
-LIDAR_HZ_KEY = 0x14                 # config key for LiDAR scan rate
+POWER_CONFIG_KEY = 0x11  # config key for power mode
+CAMERA_POWER_KEY = 0x12  # config key for camera GPIO
+WIFI_MODE_KEY = 0x13  # config key for ESP32 sleep mode
+LIDAR_HZ_KEY = 0x14  # config key for LiDAR scan rate
 
 # Power mode values
 POWER_ECO = 0x00
@@ -46,8 +46,8 @@ CAMERA_OFF = 0x00
 CAMERA_ON = 0x01
 
 # WiFi mode values
-WIFI_BATCH = 0x00                   # ESP32 light sleep between sends
-WIFI_CONTINUOUS = 0x01              # always awake
+WIFI_BATCH = 0x00  # ESP32 light sleep between sends
+WIFI_CONTINUOUS = 0x01  # always awake
 
 
 class PowerMode(enum.Enum):
@@ -58,10 +58,11 @@ class PowerMode(enum.Enum):
 @dataclass
 class PowerState:
     """Current power mode state with transition tracking."""
+
     mode: PowerMode = PowerMode.ECO
     alert_trigger: str = ""
     alert_start_time: float = 0.0
-    clear_count: int = 0             # consecutive VLM CLEAR results
+    clear_count: int = 0  # consecutive VLM CLEAR results
     camera_on: bool = False
 
 
@@ -70,7 +71,7 @@ class PowerManager:
 
     def __init__(self, send_packet=None):
         """Args:
-            send_packet: async callable(writer, pkt_type, payload) for sending config
+        send_packet: async callable(writer, pkt_type, payload) for sending config
         """
         self._send_packet = send_packet
         self.state = PowerState()
@@ -132,8 +133,7 @@ class PowerManager:
             return
 
         self.state.clear_count += 1
-        logger.info("[Power] VLM CLEAR (%d/%d)",
-                    self.state.clear_count, ALERT_CLEAR_COUNT)
+        logger.info("[Power] VLM CLEAR (%d/%d)", self.state.clear_count, ALERT_CLEAR_COUNT)
 
         if self.state.clear_count >= ALERT_CLEAR_COUNT:
             await self._deescalate(writer)
@@ -204,6 +204,8 @@ class PowerManager:
             await self._send_packet(writer, CONFIG_CMD, cmd.to_bytes())
 
     def __repr__(self) -> str:
-        return (f"PowerManager(mode={self.state.mode.value}, "
-                f"camera={'ON' if self.state.camera_on else 'OFF'}, "
-                f"clears={self.state.clear_count}/{ALERT_CLEAR_COUNT})")
+        return (
+            f"PowerManager(mode={self.state.mode.value}, "
+            f"camera={'ON' if self.state.camera_on else 'OFF'}, "
+            f"clears={self.state.clear_count}/{ALERT_CLEAR_COUNT})"
+        )

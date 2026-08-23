@@ -2,12 +2,19 @@
 
 import sys
 import os
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from protocol import (
-    ActuatorCmd, ACT_DIFF_DRIVE, ACT_QUAD_ROTOR, ACT_HUMANOID,
-    FLAG_EMERGENCY, FLAG_ALERT,
-    ROBOT_WHEELED, ROBOT_DRONE, ROBOT_HUMANOID,
+    ActuatorCmd,
+    ACT_DIFF_DRIVE,
+    ACT_QUAD_ROTOR,
+    ACT_HUMANOID,
+    FLAG_EMERGENCY,
+    FLAG_ALERT,
+    ROBOT_WHEELED,
+    ROBOT_DRONE,
+    ROBOT_HUMANOID,
 )
 from policy.wheeled import WheeledPolicy
 from policy.drone import DronePolicy
@@ -17,8 +24,8 @@ from policy import get_translator
 # Keep backward-compat import working
 from policy.actions import to_velocity_cmd
 
-
 # ── WheeledPolicy ─────────────────────────────────────────────────────────────
+
 
 def test_wheeled_stop():
     p = WheeledPolicy()
@@ -91,54 +98,56 @@ def test_wheeled_from_text():
 
 # ── DronePolicy ───────────────────────────────────────────────────────────────
 
+
 def test_drone_hover():
     p = DronePolicy(hover_throttle=1450)
     cmd = p.translate("HOVER")
     assert cmd.actuator_type == ACT_QUAD_ROTOR
-    assert cmd.channels[0] == 1450   # throttle
-    assert cmd.channels[1] == 1500   # roll neutral
-    assert cmd.channels[2] == 1500   # pitch neutral
+    assert cmd.channels[0] == 1450  # throttle
+    assert cmd.channels[1] == 1500  # roll neutral
+    assert cmd.channels[2] == 1500  # pitch neutral
 
 
 def test_drone_stop_is_hover():
     p = DronePolicy()
     cmd = p.translate("STOP")
     assert cmd.actuator_type == ACT_QUAD_ROTOR
-    assert cmd.channels[0] > 900   # not killed — hovering
+    assert cmd.channels[0] > 900  # not killed — hovering
 
 
 def test_drone_emergency_kills():
     p = DronePolicy()
     cmd = p.translate("EMERGENCY")
     assert cmd.flags == FLAG_EMERGENCY
-    assert cmd.channels[0] < 1000   # disarmed
+    assert cmd.channels[0] < 1000  # disarmed
 
 
 def test_drone_yaw_right():
     p = DronePolicy()
     cmd = p.translate("YAW_RIGHT", {"degrees": 45})
-    assert cmd.channels[3] > 1500   # yaw > neutral
+    assert cmd.channels[3] > 1500  # yaw > neutral
 
 
 def test_drone_yaw_left():
     p = DronePolicy()
     cmd = p.translate("YAW_LEFT", {"degrees": 45})
-    assert cmd.channels[3] < 1500   # yaw < neutral
+    assert cmd.channels[3] < 1500  # yaw < neutral
 
 
 def test_drone_ascend():
     p = DronePolicy(hover_throttle=1450)
     cmd = p.translate("ASCEND", {"meters": 2})
-    assert cmd.channels[0] > 1450   # throttle > hover
+    assert cmd.channels[0] > 1450  # throttle > hover
 
 
 def test_drone_descend():
     p = DronePolicy(hover_throttle=1450)
     cmd = p.translate("DESCEND", {"meters": 2})
-    assert cmd.channels[0] < 1450   # throttle < hover
+    assert cmd.channels[0] < 1450  # throttle < hover
 
 
 # ── HumanoidPolicy ────────────────────────────────────────────────────────────
+
 
 def test_humanoid_stand():
     p = HumanoidPolicy(num_joints=12)
@@ -168,6 +177,7 @@ def test_humanoid_unknown_is_stand():
 
 
 # ── get_translator ─────────────────────────────────────────────────────────────
+
 
 def test_get_translator_wheeled():
     t = get_translator(ROBOT_WHEELED)
@@ -199,6 +209,7 @@ def test_get_translator_config():
 
 # ── Backward compat: policy.actions ──────────────────────────────────────────
 
+
 def test_compat_stop():
     cmd = to_velocity_cmd("STOP")
     assert cmd.speed_l == 0 and cmd.speed_r == 0
@@ -216,27 +227,45 @@ def test_compat_turn_right():
 
 def test_compat_alert():
     from policy.actions import FLAG_ALERT
+
     cmd = to_velocity_cmd("ALERT intruder")
     assert cmd.flags == FLAG_ALERT
 
 
 if __name__ == "__main__":
     # Wheeled
-    test_wheeled_stop(); test_wheeled_forward(); test_wheeled_forward_clamp()
-    test_wheeled_turn_right(); test_wheeled_turn_left(); test_wheeled_backward()
-    test_wheeled_alert(); test_wheeled_emergency(); test_wheeled_unknown_defaults_stop()
+    test_wheeled_stop()
+    test_wheeled_forward()
+    test_wheeled_forward_clamp()
+    test_wheeled_turn_right()
+    test_wheeled_turn_left()
+    test_wheeled_backward()
+    test_wheeled_alert()
+    test_wheeled_emergency()
+    test_wheeled_unknown_defaults_stop()
     test_wheeled_from_text()
     # Drone
-    test_drone_hover(); test_drone_stop_is_hover(); test_drone_emergency_kills()
-    test_drone_yaw_right(); test_drone_yaw_left()
-    test_drone_ascend(); test_drone_descend()
+    test_drone_hover()
+    test_drone_stop_is_hover()
+    test_drone_emergency_kills()
+    test_drone_yaw_right()
+    test_drone_yaw_left()
+    test_drone_ascend()
+    test_drone_descend()
     # Humanoid
-    test_humanoid_stand(); test_humanoid_crouch()
-    test_humanoid_emergency_is_crouch(); test_humanoid_unknown_is_stand()
+    test_humanoid_stand()
+    test_humanoid_crouch()
+    test_humanoid_emergency_is_crouch()
+    test_humanoid_unknown_is_stand()
     # get_translator
-    test_get_translator_wheeled(); test_get_translator_drone()
-    test_get_translator_humanoid(); test_get_translator_string()
+    test_get_translator_wheeled()
+    test_get_translator_drone()
+    test_get_translator_humanoid()
+    test_get_translator_string()
     test_get_translator_config()
     # Backward compat
-    test_compat_stop(); test_compat_forward(); test_compat_turn_right(); test_compat_alert()
+    test_compat_stop()
+    test_compat_forward()
+    test_compat_turn_right()
+    test_compat_alert()
     print("All policy tests passed!")

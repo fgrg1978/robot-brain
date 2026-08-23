@@ -41,9 +41,11 @@ TRAJECTORY_FIRST_ID: int = 1
 # Tracked blob
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class Track:
     """State carried across frames for a single tracked blob."""
+
     id: int = 0
     cx: float = 0.0
     cy: float = 0.0
@@ -59,6 +61,7 @@ class Track:
 # ---------------------------------------------------------------------------
 # BlobTracker
 # ---------------------------------------------------------------------------
+
 
 class BlobTracker:
     """Nearest-neighbour association + N-frame confirmation."""
@@ -121,25 +124,23 @@ class BlobTracker:
                 track.frames_missing += 1
 
         # Drop stale tracks.
-        self._tracks = [
-            t for t in self._tracks
-            if t.frames_missing <= self.max_gap_frames
-        ]
+        self._tracks = [t for t in self._tracks if t.frames_missing <= self.max_gap_frames]
 
         # Start new tracks for unmatched blobs.
         for bi, blob in enumerate(blobs):
             if bi in matched_blob_indices:
                 continue
-            self._tracks.append(Track(
-                id=self._next_id,
-                cx=blob.cx,
-                cy=blob.cy,
-                area=blob.area,
-                bbox=blob.bbox,
-                frames_seen=1,
-                frames_missing=0,
-            ))
+            self._tracks.append(
+                Track(
+                    id=self._next_id,
+                    cx=blob.cx,
+                    cy=blob.cy,
+                    area=blob.area,
+                    bbox=blob.bbox,
+                    frames_seen=1,
+                    frames_missing=0,
+                )
+            )
             self._next_id += 1
 
-        return [t for t in self._tracks
-                if t.is_confirmed(self.confirm_frames)]
+        return [t for t in self._tracks if t.is_confirmed(self.confirm_frames)]

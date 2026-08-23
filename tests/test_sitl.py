@@ -3,20 +3,21 @@
 import sys
 import os
 import math
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from protocol import ActuatorCmd, ACT_DIFF_DRIVE, FLAG_EMERGENCY
 from tools.sitl.sitl_wheeled import RobotSim, World, Rect
 
-
 # ── World / raycast ────────────────────────────────────────────────────────────
+
 
 def test_world_raycast_wall():
     world = World(obstacles=[], width_mm=5000, height_mm=5000)
     # Robot at center facing East — should hit east wall at ~2500 mm
     robot = RobotSim(world, start_x=2500, start_y=2500, start_hdg_deg=0)
     d = world.raycast(2500, 2500, 0)
-    assert 2400 < d < 2700   # wall at x=5000 + 100 thick, from x=2500 → ~2500
+    assert 2400 < d < 2700  # wall at x=5000 + 100 thick, from x=2500 → ~2500
 
 
 def test_world_collision():
@@ -31,10 +32,11 @@ def test_world_obstacle_raycast():
     world = World(obstacles=obs, width_mm=5000, height_mm=5000)
     # From x=200, facing East (0°) — obstacle at x=1000
     d = world.raycast(200, 1000, 0)
-    assert 750 < d < 850   # ~800 mm to x=1000
+    assert 750 < d < 850  # ~800 mm to x=1000
 
 
 # ── RobotSim physics ───────────────────────────────────────────────────────────
+
 
 def _make_robot(x=1000, y=1000, hdg=0) -> RobotSim:
     world = World(obstacles=[], width_mm=10000, height_mm=10000)
@@ -75,20 +77,22 @@ def test_robot_apply_cmd_clamps():
 
 def test_robot_moves_forward():
     import time
+
     robot = _make_robot(x=5000, y=5000, hdg=0)  # facing East
     cmd = ActuatorCmd.wheeled(100, 100)
     robot.apply_cmd(cmd)
 
     # Step 1 second of physics at 100 Hz
     for _ in range(100):
-        robot._last_tick -= 0.01   # fake 10ms elapsed
+        robot._last_tick -= 0.01  # fake 10ms elapsed
         robot.step()
 
-    assert robot.x > 5200   # should have moved East
+    assert robot.x > 5200  # should have moved East
 
 
 def test_robot_turns_right():
     import time
+
     robot = _make_robot(x=5000, y=5000, hdg=0)
     # Right turn: left faster than right → CW
     cmd = ActuatorCmd.wheeled(60, -60)
@@ -98,7 +102,7 @@ def test_robot_turns_right():
         robot._last_tick -= 0.01
         robot.step()
 
-    assert robot.hdg_deg > 10   # heading increased (CW)
+    assert robot.hdg_deg > 10  # heading increased (CW)
 
 
 def test_robot_sensor_packet():
@@ -107,6 +111,7 @@ def test_robot_sensor_packet():
     assert pkt.battery_mv > 0
     assert pkt.range_front_mm > 0
     from protocol import SensorPacket
+
     assert isinstance(pkt, SensorPacket)
 
 
@@ -115,6 +120,7 @@ def test_robot_sensor_packet_roundtrip():
     pkt = robot.sensor_packet()
     data = pkt.to_bytes()
     from protocol import SensorPacket
+
     pkt2 = SensorPacket.from_bytes(data)
     assert pkt2.battery_mv == pkt.battery_mv
     assert pkt2.range_front_mm == pkt.range_front_mm
@@ -124,12 +130,13 @@ def test_robot_status_packet():
     robot = _make_robot()
     st = robot.status_packet()
     from protocol import ROBOT_WHEELED
+
     assert st.robot_type == ROBOT_WHEELED
 
 
 def test_robot_collision_stops_motion():
     # Place robot right next to a wall
-    obs = [Rect(1200, 0, 100, 5000)]   # vertical wall at x=1200
+    obs = [Rect(1200, 0, 100, 5000)]  # vertical wall at x=1200
     world = World(obstacles=obs, width_mm=10000, height_mm=10000)
     robot = RobotSim(world, start_x=1000, start_y=2500, start_hdg_deg=0)
     cmd = ActuatorCmd.wheeled(100, 100)
@@ -157,6 +164,7 @@ def test_robot_battery_drains():
 
 
 # ── Scenario loading ───────────────────────────────────────────────────────────
+
 
 def test_world_from_scenario_empty():
     scenario = {"obstacles": [], "width_mm": 8000, "height_mm": 6000}
@@ -192,15 +200,24 @@ from sitl import (
     SCEN_MEDIUM_S,
 )
 from protocol import (
-    ROBOT_WHEELED, ROBOT_DRONE, ROBOT_HUMANOID, ROBOT_ACKERMANN,
-    SensorPacketDrone, SensorPacketHumanoid,
-    ACT_QUAD_ROTOR, ACT_ACKERMANN,
-    STATUS, CAMERA_FRAME, SENSOR_PACKET,
-    build_packet, parse_packet, read_packet,
+    ROBOT_WHEELED,
+    ROBOT_DRONE,
+    ROBOT_HUMANOID,
+    ROBOT_ACKERMANN,
+    SensorPacketDrone,
+    SensorPacketHumanoid,
+    ACT_QUAD_ROTOR,
+    ACT_ACKERMANN,
+    STATUS,
+    CAMERA_FRAME,
+    SENSOR_PACKET,
+    build_packet,
+    parse_packet,
+    read_packet,
 )
 
-
 # --- Construction / typing ---------------------------------------------------
+
 
 def test_sitl_default_is_wheeled():
     r = SITLRobot()
@@ -222,13 +239,14 @@ def test_sitl_drone_starts_on_ground():
 
 # --- Physics: wheeled --------------------------------------------------------
 
+
 def test_sitl_wheeled_moves_forward():
     r = SITLRobot(robot_type=ROBOT_WHEELED, x_mm=5000, y_mm=5000, hdg_deg=0)
     r.apply_cmd(ActuatorCmd.wheeled(100, 100))
     for _ in range(100):
         r.step(0.01)
-    assert r.x_mm > 5100        # moved east
-    assert abs(r.y_mm - 5000) < 5   # barely any Y drift
+    assert r.x_mm > 5100  # moved east
+    assert abs(r.y_mm - 5000) < 5  # barely any Y drift
 
 
 def test_sitl_wheeled_turns_right_on_skid():
@@ -250,6 +268,7 @@ def test_sitl_wheeled_encoders_advance():
 
 # --- Physics: ackermann ------------------------------------------------------
 
+
 def test_sitl_ackermann_straight():
     r = SITLRobot(robot_type=ROBOT_ACKERMANN, x_mm=1000, y_mm=5000, hdg_deg=0)
     r.apply_cmd(ActuatorCmd(actuator_type=ACT_ACKERMANN, channels=[100, 0]))
@@ -270,19 +289,22 @@ def test_sitl_ackermann_steer_turns():
 
 # --- Physics: drone ----------------------------------------------------------
 
+
 def test_sitl_drone_climbs_at_full_throttle():
     r = SITLRobot(robot_type=ROBOT_DRONE)
-    r.apply_cmd(ActuatorCmd.drone(DRONE_PWM_MAX, DRONE_PWM_NEUTRAL,
-                                   DRONE_PWM_NEUTRAL, DRONE_PWM_NEUTRAL))
+    r.apply_cmd(
+        ActuatorCmd.drone(DRONE_PWM_MAX, DRONE_PWM_NEUTRAL, DRONE_PWM_NEUTRAL, DRONE_PWM_NEUTRAL)
+    )
     for _ in range(100):
         r.step(0.01)
-    assert r.z_mm > 100   # climbed at least 10 cm
+    assert r.z_mm > 100  # climbed at least 10 cm
 
 
 def test_sitl_drone_hover_altitude_stable():
     r = SITLRobot(robot_type=ROBOT_DRONE, z_mm=1000, vz_m_s=0.0)
-    r.apply_cmd(ActuatorCmd.drone(DRONE_HOVER_PWM, DRONE_PWM_NEUTRAL,
-                                   DRONE_PWM_NEUTRAL, DRONE_PWM_NEUTRAL))
+    r.apply_cmd(
+        ActuatorCmd.drone(DRONE_HOVER_PWM, DRONE_PWM_NEUTRAL, DRONE_PWM_NEUTRAL, DRONE_PWM_NEUTRAL)
+    )
     for _ in range(100):
         r.step(0.01)
     # At hover PWM (= hover constant), net vertical accel = 0 → altitude stays
@@ -299,6 +321,7 @@ def test_sitl_drone_ground_clamp():
 
 # --- Emergency / flags -------------------------------------------------------
 
+
 def test_sitl_emergency_stops_motion():
     r = SITLRobot(robot_type=ROBOT_WHEELED)
     r.apply_cmd(ActuatorCmd.wheeled(100, 100))
@@ -310,8 +333,9 @@ def test_sitl_emergency_stops_motion():
 
 def test_sitl_drone_emergency_disarms():
     r = SITLRobot(robot_type=ROBOT_DRONE)
-    r.apply_cmd(ActuatorCmd.drone(DRONE_PWM_MAX, DRONE_PWM_NEUTRAL,
-                                   DRONE_PWM_NEUTRAL, DRONE_PWM_NEUTRAL))
+    r.apply_cmd(
+        ActuatorCmd.drone(DRONE_PWM_MAX, DRONE_PWM_NEUTRAL, DRONE_PWM_NEUTRAL, DRONE_PWM_NEUTRAL)
+    )
     r.apply_cmd(ActuatorCmd.stop(ACT_QUAD_ROTOR, n_channels=4))
     assert r.drone_throttle_pwm == 1000
     assert r.vz_m_s == 0.0
@@ -319,12 +343,14 @@ def test_sitl_drone_emergency_disarms():
 
 # --- Sensor packets ----------------------------------------------------------
 
+
 def test_sitl_wheeled_sensor_packet_roundtrip():
     r = SITLRobot(robot_type=ROBOT_WHEELED)
     r.step(0.1)
     pkt = r.sensor_packet()
     data = pkt.to_bytes()
     from protocol import SensorPacket
+
     pkt2 = SensorPacket.from_bytes(data)
     assert pkt2.battery_mv == pkt.battery_mv
     assert pkt2.encoder_l == pkt.encoder_l
@@ -368,10 +394,12 @@ def test_sitl_battery_drains():
 
 # --- Camera ------------------------------------------------------------------
 
+
 def test_sitl_camera_payload_has_header():
     payload = synthetic_camera_payload()
     # Header: 2B width + 2B height + 1B format
     import struct as _s
+
     w, h, fmt = _s.unpack_from("<HHB", payload, 0)
     assert w == 160
     assert h == 120
@@ -385,10 +413,11 @@ def test_sitl_camera_packet_builds():
     assert parsed is not None
     pkt_type, payload = parsed
     assert pkt_type == CAMERA_FRAME
-    assert len(payload) > 5   # header + some pixels
+    assert len(payload) > 5  # header + some pixels
 
 
 # --- Scenarios ---------------------------------------------------------------
+
 
 def test_list_scenarios_nonempty():
     names = list_scenarios()
@@ -414,17 +443,19 @@ def test_run_scenario_emergency_stop():
 def test_run_scenario_takeoff_drone():
     r = SITLRobot(robot_type=ROBOT_DRONE)
     run_scenario(r, "takeoff_hover_land", duration_s=1.0, dt=0.01)
-    assert r.z_mm > 0.0   # climbed above ground
+    assert r.z_mm > 0.0  # climbed above ground
 
 
 def test_run_scenario_unknown_raises():
     r = SITLRobot()
     import pytest
+
     with pytest.raises(KeyError):
         run_scenario(r, "does_not_exist")
 
 
 # --- Network client (integration w/ asyncio echo) ----------------------------
+
 
 def test_sitl_netclient_sends_status_and_sensors():
     """Boot a tiny TCP server, connect the SITL client, verify packets arrive."""
@@ -448,8 +479,9 @@ def test_sitl_netclient_sends_status_and_sensors():
         server = await _a.start_server(server_handler, "127.0.0.1", 0)
         host, port = server.sockets[0].getsockname()[:2]
         robot = SITLRobot(robot_type=ROBOT_WHEELED)
-        client = SITLNetClient(robot, host=host, port=port,
-                                sensor_hz=50, camera_hz=0, duration_s=0.3)
+        client = SITLNetClient(
+            robot, host=host, port=port, sensor_hz=50, camera_hz=0, duration_s=0.3
+        )
         await client.run()
         server.close()
         await server.wait_closed()

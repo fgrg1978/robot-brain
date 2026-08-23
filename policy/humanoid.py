@@ -13,9 +13,9 @@ from protocol import ActuatorCmd, ACT_HUMANOID, FLAG_EMERGENCY, FLAG_ALERT
 N_JOINTS_DEFAULT = 12
 
 # Safe poses (centidegrees) for 12-DOF humanoid
-POSE_STAND   = [0, 0, 0, 0, 0, 0,   0, 0, 0, 0, 0, 0]
-POSE_CROUCH  = [0, 0, -3000, 6000, -3000, 0,   0, 0, -3000, 6000, -3000, 0]
-POSE_SIT     = [0, 0, -4500, 9000, -4500, 0,   0, 0, -4500, 9000, -4500, 0]
+POSE_STAND = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+POSE_CROUCH = [0, 0, -3000, 6000, -3000, 0, 0, 0, -3000, 6000, -3000, 0]
+POSE_SIT = [0, 0, -4500, 9000, -4500, 0, 0, 0, -4500, 9000, -4500, 0]
 
 
 class HumanoidPolicy:
@@ -30,7 +30,9 @@ class HumanoidPolicy:
         self._crouch_pose = POSE_CROUCH[:num_joints]
         self._sit_pose = POSE_SIT[:num_joints]
 
-    def translate(self, skill: str, args: dict | None = None, sensors: dict | None = None) -> ActuatorCmd:
+    def translate(
+        self, skill: str, args: dict | None = None, sensors: dict | None = None
+    ) -> ActuatorCmd:
         """Translate a skill into humanoid ActuatorCmd (joint angles)."""
         args = args or {}
         s = skill.strip().upper()
@@ -85,6 +87,6 @@ class HumanoidPolicy:
     def _pose(self, angles: list[int], flags: int = 0) -> ActuatorCmd:
         return ActuatorCmd(
             actuator_type=ACT_HUMANOID,
-            channels=angles[:self.num_joints],
+            channels=angles[: self.num_joints],
             flags=flags,
         )

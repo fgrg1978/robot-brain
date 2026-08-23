@@ -178,7 +178,8 @@ class TestFrameCodec:
         assert decoded.seq == 42
         # param1..7(7*f32) + command(u16) + target_sys + target_comp + confirm
         p1, p2, p3, p4, p5, p6, p7, cmd, tsys, tcomp, conf = struct.unpack(
-            "<fffffffHBBB", decoded.payload[:33],
+            "<fffffffHBBB",
+            decoded.payload[:33],
         )
         assert cmd == MAV_CMD_NAV_TAKEOFF
         assert tsys == MAVLINK_TARGET_SYSTEM
@@ -212,13 +213,15 @@ class TestTelemetryParsers:
     def test_global_position_int(self):
         payload = struct.pack(
             "<IiiiihhhH",
-            123456,             # time_boot_ms
-            int(40.1234567 * 1e7),   # lat
-            int(-3.9876543 * 1e7),   # lon
-            55_000,                  # alt (mm) absolute
-            12_500,                  # relative_alt (mm) = 12.5 m
-            100, -50, 25,           # vx, vy, vz cm/s
-            9000,                   # hdg centideg = 90 deg
+            123456,  # time_boot_ms
+            int(40.1234567 * 1e7),  # lat
+            int(-3.9876543 * 1e7),  # lon
+            55_000,  # alt (mm) absolute
+            12_500,  # relative_alt (mm) = 12.5 m
+            100,
+            -50,
+            25,  # vx, vy, vz cm/s
+            9000,  # hdg centideg = 90 deg
         )
         d = parse_global_position_int(payload)
         assert math.isclose(d["lat_deg"], 40.1234567, rel_tol=1e-6)
@@ -230,8 +233,12 @@ class TestTelemetryParsers:
         payload = struct.pack(
             "<Iffffff",
             1000,
-            0.1, -0.2, 1.5,    # roll / pitch / yaw (rad)
-            0.0, 0.0, 0.0,
+            0.1,
+            -0.2,
+            1.5,  # roll / pitch / yaw (rad)
+            0.0,
+            0.0,
+            0.0,
         )
         d = parse_attitude(payload)
         assert math.isclose(d["roll_deg"], math.degrees(0.1), rel_tol=1e-4)
@@ -242,14 +249,19 @@ class TestTelemetryParsers:
         # Full 31B SYS_STATUS layout per MAVLink v1 spec.
         payload = struct.pack(
             "<IIIHHhHHHHHHb",
-            0, 0, 0,       # sensors present/enabled/health
-            500,           # load 0.5%
-            11_800,        # voltage_battery mV
-            -1,            # current_battery (cA)
-            0,             # drop_rate_comm
-            0,             # errors_comm
-            0, 0, 0, 0,    # errors_count 1..4
-            87,            # battery_remaining %
+            0,
+            0,
+            0,  # sensors present/enabled/health
+            500,  # load 0.5%
+            11_800,  # voltage_battery mV
+            -1,  # current_battery (cA)
+            0,  # drop_rate_comm
+            0,  # errors_comm
+            0,
+            0,
+            0,
+            0,  # errors_count 1..4
+            87,  # battery_remaining %
         )
         d = parse_sys_status(payload)
         assert d["voltage_mv"] == 11_800
@@ -257,9 +269,11 @@ class TestTelemetryParsers:
 
     def test_battery_status(self):
         voltages = [12_100] + [0xFFFF] * 9
-        payload = struct.pack("<BBBh", 0, 0, 3, 250) \
-            + struct.pack("<10H", *voltages) \
+        payload = (
+            struct.pack("<BBBh", 0, 0, 3, 250)
+            + struct.pack("<10H", *voltages)
             + struct.pack("<hiib", 0, 0, 0, 72)
+        )
         d = parse_battery_status(payload)
         assert d["voltage_mv"] == 12_100
         assert d["battery_remaining_pct"] == 72
@@ -271,8 +285,12 @@ class TestTelemetryParsers:
             int(37.5 * 1e7),
             int(-122.3 * 1e7),
             50_000,
-            100, 100, 0, 0,
-            3, 12,
+            100,
+            100,
+            0,
+            0,
+            3,
+            12,
         )
         d = parse_gps_raw_int(payload)
         assert math.isclose(d["lat_deg"], 37.5, rel_tol=1e-6)
@@ -365,6 +383,7 @@ class TestMavTelemetry:
 
     def test_connected_requires_recent_heartbeat(self):
         import time as _t
+
         t = MavTelemetry()
         t.last_heartbeat = _t.time()
         assert t.connected
@@ -403,7 +422,8 @@ class TestMAVLinkClient:
         assert frame is not None
         assert frame.msgid == MAVLINK_MSG_ID_COMMAND_LONG
         p1, *_rest, cmd, _ts, _tc, _conf = struct.unpack(
-            "<fffffffHBBB", frame.payload[:33],
+            "<fffffffHBBB",
+            frame.payload[:33],
         )
         assert cmd == MAV_CMD_COMPONENT_ARM_DISARM
         assert p1 == float(ARM_DISARM_ARM)
@@ -413,7 +433,8 @@ class TestMAVLinkClient:
         asyncio.run(c.disarm())
         frame = decode_mavlink_v1(tx.sent[0])
         p1, *_r, cmd, _ts, _tc, _conf = struct.unpack(
-            "<fffffffHBBB", frame.payload[:33],
+            "<fffffffHBBB",
+            frame.payload[:33],
         )
         assert cmd == MAV_CMD_COMPONENT_ARM_DISARM
         assert p1 == float(ARM_DISARM_DISARM)
@@ -423,7 +444,8 @@ class TestMAVLinkClient:
         asyncio.run(c.takeoff(altitude_m=17.5))
         frame = decode_mavlink_v1(tx.sent[0])
         _p1, _p2, _p3, _p4, _p5, _p6, p7, cmd, *_ = struct.unpack(
-            "<fffffffHBBB", frame.payload[:33],
+            "<fffffffHBBB",
+            frame.payload[:33],
         )
         assert cmd == MAV_CMD_NAV_TAKEOFF
         assert math.isclose(p7, 17.5, rel_tol=1e-5)
@@ -448,9 +470,9 @@ class TestMAVLinkClient:
         frame = decode_mavlink_v1(tx.sent[0])
         p = struct.unpack("<fffffffHBBB", frame.payload[:33])
         assert p[7] == MAV_CMD_NAV_WAYPOINT
-        assert math.isclose(p[4], 40.1, rel_tol=1e-5)   # lat
-        assert math.isclose(p[5], -3.7, rel_tol=1e-5)   # lon
-        assert math.isclose(p[6], 25.0, rel_tol=1e-5)   # alt
+        assert math.isclose(p[4], 40.1, rel_tol=1e-5)  # lat
+        assert math.isclose(p[5], -3.7, rel_tol=1e-5)  # lon
+        assert math.isclose(p[6], 25.0, rel_tol=1e-5)  # alt
 
     def test_execute_skill_takeoff(self):
         c, tx = self._build_client()
@@ -469,7 +491,7 @@ class TestMAVLinkClient:
     def test_execute_skill_hover_is_noop(self):
         c, tx = self._build_client()
         ok = asyncio.run(c.execute_skill("HOVER"))
-        assert ok is False   # no MAVLink command sent
+        assert ok is False  # no MAVLink command sent
         assert tx.sent == []
 
     def test_sequence_counter_increments(self):
@@ -495,11 +517,17 @@ class TestRxPath:
         c = MAVLinkClient(transport=FakeTransport())
         payload = struct.pack(
             "<IiiiihhhH",
-            1, int(45.0 * 1e7), int(10.0 * 1e7),
-            100_000, 15_000, 0, 0, 0, 18_000,
+            1,
+            int(45.0 * 1e7),
+            int(10.0 * 1e7),
+            100_000,
+            15_000,
+            0,
+            0,
+            0,
+            18_000,
         )
-        frame = encode_mavlink_v1(MAVLINK_MSG_ID_GLOBAL_POSITION_INT,
-                                  payload, seq=0)
+        frame = encode_mavlink_v1(MAVLINK_MSG_ID_GLOBAL_POSITION_INT, payload, seq=0)
         c.feed_bytes(frame)
         assert math.isclose(c.telemetry.lat, 45.0, rel_tol=1e-6)
         assert math.isclose(c.telemetry.lon, 10.0, rel_tol=1e-6)
@@ -511,7 +539,12 @@ class TestRxPath:
         # Build a heartbeat with base_mode including the armed bit.
         payload = struct.pack(
             "<IBBBBB",
-            0, 6, 8, 0x80, 4, 3,
+            0,
+            6,
+            8,
+            0x80,
+            4,
+            3,
         )
         frame = encode_mavlink_v1(MAVLINK_MSG_ID_HEARTBEAT, payload, seq=0)
         c.feed_bytes(frame)
@@ -542,11 +575,12 @@ class TestRxPath:
 class TestFailsafe:
     def _with_fresh_heartbeat(self, c):
         import time as _t
+
         c.telemetry.last_heartbeat = _t.time()
 
     def test_no_action_when_disconnected(self):
         c = MAVLinkClient(transport=FakeTransport())
-        c.telemetry.battery_pct = 5      # critical
+        c.telemetry.battery_pct = 5  # critical
         # No heartbeat — can't trust telemetry
         action = asyncio.run(c.check_failsafe())
         assert action is None

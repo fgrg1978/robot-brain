@@ -5,15 +5,25 @@ import tempfile
 import time
 
 from planner.logger import (
-    MissionLogger, LogEvent, MissionSummary, MissionAnalytics,
-    LOG_MAX_EVENTS, LOG_FLUSH_INTERVAL, LOG_RETENTION_DAYS,
+    MissionLogger,
+    LogEvent,
+    MissionSummary,
+    MissionAnalytics,
+    LOG_MAX_EVENTS,
+    LOG_FLUSH_INTERVAL,
+    LOG_RETENTION_DAYS,
 )
 
 
 class TestConstants:
-    def test_max_events(self): assert LOG_MAX_EVENTS > 0
-    def test_flush_interval(self): assert LOG_FLUSH_INTERVAL > 0
-    def test_retention_days(self): assert LOG_RETENTION_DAYS > 0
+    def test_max_events(self):
+        assert LOG_MAX_EVENTS > 0
+
+    def test_flush_interval(self):
+        assert LOG_FLUSH_INTERVAL > 0
+
+    def test_retention_days(self):
+        assert LOG_RETENTION_DAYS > 0
 
 
 class TestMissionLogger:

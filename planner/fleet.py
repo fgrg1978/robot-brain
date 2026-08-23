@@ -23,18 +23,20 @@ logger = logging.getLogger("brain.fleet")
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
-ROBOT_HEARTBEAT_TIMEOUT_S = 30.0   # consider robot offline after no heartbeat
+ROBOT_HEARTBEAT_TIMEOUT_S = 30.0  # consider robot offline after no heartbeat
 FLEET_REBALANCE_INTERVAL_S = 60.0  # recheck zone coverage periodically
-DISPATCH_COOLDOWN_S = 10.0         # min time between dispatches to same zone
+DISPATCH_COOLDOWN_S = 10.0  # min time between dispatches to same zone
 
 
 # ---------------------------------------------------------------------------
 # Data types
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class RobotEntry:
     """Tracked state of one robot in the fleet."""
+
     robot_id: str
     port: int = 9000
     zones: list[str] = field(default_factory=list)
@@ -44,7 +46,7 @@ class RobotEntry:
     battery_mv: int = 0
     online: bool = False
     docked: bool = False
-    busy: bool = False             # currently executing a dispatch
+    busy: bool = False  # currently executing a dispatch
     last_heartbeat: float = 0.0
     last_dispatch: float = 0.0
 
@@ -52,6 +54,7 @@ class RobotEntry:
 @dataclass
 class DispatchResult:
     """Result of dispatching a robot."""
+
     robot_id: str
     zone: str
     distance_mm: float
@@ -61,6 +64,7 @@ class DispatchResult:
 # ---------------------------------------------------------------------------
 # FleetPlanner
 # ---------------------------------------------------------------------------
+
 
 class FleetPlanner:
     """Multi-robot fleet coordinator."""
@@ -129,7 +133,8 @@ class FleetPlanner:
                     robot.online = False
                     newly_offline.append(robot.robot_id)
                     logger.warning(
-                        "[Fleet] Robot '%s' went offline", robot.robot_id,
+                        "[Fleet] Robot '%s' went offline",
+                        robot.robot_id,
                     )
         return newly_offline
 
@@ -200,7 +205,11 @@ class FleetPlanner:
         best.last_dispatch = now
         logger.info(
             "[Fleet] Dispatching '%s' to (%.0f, %.0f) zone='%s' dist=%.0fmm",
-            best.robot_id, target_x_mm, target_y_mm, zone, best_dist,
+            best.robot_id,
+            target_x_mm,
+            target_y_mm,
+            zone,
+            best_dist,
         )
         return DispatchResult(
             robot_id=best.robot_id,
@@ -237,14 +246,16 @@ class FleetPlanner:
         """Summary for Telegram /fleet command."""
         robots = []
         for r in self._robots.values():
-            robots.append({
-                "id": r.robot_id,
-                "online": r.online,
-                "battery_mv": r.battery_mv,
-                "zones": r.zones,
-                "docked": r.docked,
-                "busy": r.busy,
-            })
+            robots.append(
+                {
+                    "id": r.robot_id,
+                    "online": r.online,
+                    "battery_mv": r.battery_mv,
+                    "zones": r.zones,
+                    "docked": r.docked,
+                    "busy": r.busy,
+                }
+            )
         return {
             "total": len(self._robots),
             "online": self.online_count,
@@ -267,7 +278,4 @@ class FleetPlanner:
             )
 
     def __repr__(self) -> str:
-        return (
-            f"FleetPlanner(robots={self.robot_count}, "
-            f"online={self.online_count})"
-        )
+        return f"FleetPlanner(robots={self.robot_count}, " f"online={self.online_count})"

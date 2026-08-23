@@ -7,8 +7,10 @@ from perception.slam import SLAM, OccupancyGrid
 from planner.path import PathPlanner
 from planner.mapper import PerimeterMapper, Waypoint
 from planner.patrol import (
-    PatrolController, PatrolState,
-    PATROL_WAYPOINT_REACH_MM, PATROL_DEFAULT_SPEED_PCT,
+    PatrolController,
+    PatrolState,
+    PATROL_WAYPOINT_REACH_MM,
+    PATROL_DEFAULT_SPEED_PCT,
 )
 from policy.wheeled import WheeledPolicy
 from protocol import ActuatorCmd
@@ -32,8 +34,11 @@ class TestPatrolController:
 
         policy = WheeledPolicy(max_speed=80)
         patrol = PatrolController(
-            slam=slam, path_planner=planner, mapper=mapper,
-            send_cmd=mock_send, policy=policy,
+            slam=slam,
+            path_planner=planner,
+            mapper=mapper,
+            send_cmd=mock_send,
+            policy=policy,
         )
         return patrol, cmds_sent
 
@@ -123,8 +128,8 @@ class TestPatrolNavSkills:
     def test_navigate_path_steer_right(self):
         p = WheeledPolicy(max_speed=80)
         cmd = p.translate("NAVIGATE_PATH", {"speed": 40, "steer": 20})
-        assert cmd.channels[0] == 60   # left faster
-        assert cmd.channels[1] == 20   # right slower
+        assert cmd.channels[0] == 60  # left faster
+        assert cmd.channels[1] == 20  # right slower
 
     def test_navigate_path_steer_left(self):
         p = WheeledPolicy(max_speed=80)

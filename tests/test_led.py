@@ -4,15 +4,25 @@ import asyncio
 import pytest
 
 from protocol import (
-    ConfigCmd, CONFIG_CMD,
-    LED_CONFIG_KEY, LED_OFF, LED_GREEN, LED_GREEN_BLINK,
-    LED_YELLOW, LED_YELLOW_BLINK, LED_RED, LED_RED_BLINK,
-    LED_RED_STROBE, LED_BLUE, LED_BLUE_BLINK, LED_WHITE_FLASH,
+    ConfigCmd,
+    CONFIG_CMD,
+    LED_CONFIG_KEY,
+    LED_OFF,
+    LED_GREEN,
+    LED_GREEN_BLINK,
+    LED_YELLOW,
+    LED_YELLOW_BLINK,
+    LED_RED,
+    LED_RED_BLINK,
+    LED_RED_STROBE,
+    LED_BLUE,
+    LED_BLUE_BLINK,
+    LED_WHITE_FLASH,
 )
 from planner.led import LedController, LED_STATE_MAP
 
-
 # ── ConfigCmd ────────────────────────────────────────────────────────────────
+
 
 class TestConfigCmd:
 
@@ -31,10 +41,17 @@ class TestConfigCmd:
 
     def test_all_led_codes_unique(self):
         codes = [
-            LED_OFF, LED_GREEN, LED_GREEN_BLINK,
-            LED_YELLOW, LED_YELLOW_BLINK,
-            LED_RED, LED_RED_BLINK, LED_RED_STROBE,
-            LED_BLUE, LED_BLUE_BLINK, LED_WHITE_FLASH,
+            LED_OFF,
+            LED_GREEN,
+            LED_GREEN_BLINK,
+            LED_YELLOW,
+            LED_YELLOW_BLINK,
+            LED_RED,
+            LED_RED_BLINK,
+            LED_RED_STROBE,
+            LED_BLUE,
+            LED_BLUE_BLINK,
+            LED_WHITE_FLASH,
         ]
         assert len(codes) == len(set(codes))
 
@@ -44,6 +61,7 @@ class TestConfigCmd:
 
 
 # ── LedController ────────────────────────────────────────────────────────────
+
 
 class TestLedController:
 
@@ -140,9 +158,17 @@ class TestLedController:
 
     def test_all_states_in_map(self):
         expected_states = [
-            "off", "monitoring", "mapping", "detecting",
-            "investigating", "confirmed", "tracking",
-            "panic", "returning", "low_battery", "photo",
+            "off",
+            "monitoring",
+            "mapping",
+            "detecting",
+            "investigating",
+            "confirmed",
+            "tracking",
+            "panic",
+            "returning",
+            "low_battery",
+            "photo",
         ]
         for state in expected_states:
             assert state in LED_STATE_MAP, f"Missing state: {state}"

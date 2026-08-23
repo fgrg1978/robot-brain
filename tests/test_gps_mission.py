@@ -2,16 +2,27 @@
 
 import math
 from planner.gps_mission import (
-    GpsPosition, GpsWaypoint, Geofence, GpsMission,
-    haversine_m, bearing_deg,
-    EARTH_RADIUS_M, WAYPOINT_REACH_M, GPS_STALE_S,
+    GpsPosition,
+    GpsWaypoint,
+    Geofence,
+    GpsMission,
+    haversine_m,
+    bearing_deg,
+    EARTH_RADIUS_M,
+    WAYPOINT_REACH_M,
+    GPS_STALE_S,
 )
 
 
 class TestConstants:
-    def test_earth_radius(self): assert EARTH_RADIUS_M > 6_000_000
-    def test_waypoint_reach(self): assert WAYPOINT_REACH_M > 0
-    def test_gps_stale(self): assert GPS_STALE_S > 0
+    def test_earth_radius(self):
+        assert EARTH_RADIUS_M > 6_000_000
+
+    def test_waypoint_reach(self):
+        assert WAYPOINT_REACH_M > 0
+
+    def test_gps_stale(self):
+        assert GPS_STALE_S > 0
 
 
 class TestGpsPosition:
@@ -61,12 +72,14 @@ class TestGeofence:
     def _square_fence(self):
         # 100m × 100m square centered at (40.0, -3.0)
         d = 0.001  # ~111m
-        return Geofence(boundary=[
-            (40.0 - d, -3.0 - d),
-            (40.0 - d, -3.0 + d),
-            (40.0 + d, -3.0 + d),
-            (40.0 + d, -3.0 - d),
-        ])
+        return Geofence(
+            boundary=[
+                (40.0 - d, -3.0 - d),
+                (40.0 - d, -3.0 + d),
+                (40.0 + d, -3.0 + d),
+                (40.0 + d, -3.0 - d),
+            ]
+        )
 
     def test_inside(self):
         gf = self._square_fence()

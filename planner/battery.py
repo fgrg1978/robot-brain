@@ -18,14 +18,14 @@ logger = logging.getLogger("brain.battery")
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
-BATTERY_NOMINAL_MAH = 3600         # 2S3P pack (6× 18650 1200mAh)
-BATTERY_NOMINAL_MV = 7400          # 2S nominal (3.7V × 2)
-BATTERY_FULL_MV = 8400             # 2S full (4.2V × 2)
-BATTERY_EMPTY_MV = 6000            # 2S empty (3.0V × 2)
-BATTERY_CELLS = 2                  # series cell count
+BATTERY_NOMINAL_MAH = 3600  # 2S3P pack (6× 18650 1200mAh)
+BATTERY_NOMINAL_MV = 7400  # 2S nominal (3.7V × 2)
+BATTERY_FULL_MV = 8400  # 2S full (4.2V × 2)
+BATTERY_EMPTY_MV = 6000  # 2S empty (3.0V × 2)
+BATTERY_CELLS = 2  # series cell count
 
 # Voltage sag
-VOLTAGE_SAG_THRESHOLD_MV = 500     # drop > this in 1s = sag
+VOLTAGE_SAG_THRESHOLD_MV = 500  # drop > this in 1s = sag
 VOLTAGE_SAG_WINDOW_S = 1.0
 
 # Failsafe levels (% remaining)
@@ -35,7 +35,7 @@ FAILSAFE_LAND_PCT = 10
 FAILSAFE_KILL_PCT = 5
 
 # History
-HISTORY_MAX_SAMPLES = 3600         # 1 hour at 1Hz
+HISTORY_MAX_SAMPLES = 3600  # 1 hour at 1Hz
 
 
 # ---------------------------------------------------------------------------
@@ -48,7 +48,7 @@ class BatteryState:
     mah_used: int = 0
     capacity_pct: int = 100
     sag_detected: bool = False
-    failsafe_level: int = 0        # 0=OK, 1=WARNING, 2=RTL, 3=LAND, 4=KILL
+    failsafe_level: int = 0  # 0=OK, 1=WARNING, 2=RTL, 3=LAND, 4=KILL
     autonomy_minutes: float = 0.0
     per_cell_mv: float = 0.0
     timestamp: float = field(default_factory=time.time)
@@ -94,9 +94,7 @@ class BatteryMonitor:
         if capacity_pct >= 0:
             self._state.capacity_pct = capacity_pct
         else:
-            self._state.capacity_pct = self._estimate_pct_from_voltage(
-                voltage_mv
-            )
+            self._state.capacity_pct = self._estimate_pct_from_voltage(voltage_mv)
 
         # Autonomy prediction
         if current_ma > 0 and mah_used < self._nominal_mah:
@@ -114,7 +112,10 @@ class BatteryMonitor:
                     self._state.sag_detected = True
                     logger.warning(
                         "[Battery] Voltage sag: %dmV → %dmV (-%dmV in %.1fs)",
-                        self._sag_prev_mv, voltage_mv, drop, dt,
+                        self._sag_prev_mv,
+                        voltage_mv,
+                        drop,
+                        dt,
                     )
         self._sag_prev_mv = voltage_mv
         self._sag_prev_time = now
@@ -128,16 +129,11 @@ class BatteryMonitor:
         """Format battery status for Telegram /battery command."""
         s = self._state
         lines = [f"Battery: {s.capacity_pct}%"]
-        lines.append(
-            f"  Voltage: {s.voltage_mv}mV "
-            f"({s.per_cell_mv:.0f}mV/cell)"
-        )
+        lines.append(f"  Voltage: {s.voltage_mv}mV " f"({s.per_cell_mv:.0f}mV/cell)")
         if s.current_ma > 0:
             lines.append(f"  Current: {s.current_ma}mA")
         if s.mah_used > 0:
-            lines.append(
-                f"  Used: {s.mah_used}/{self._nominal_mah} mAh"
-            )
+            lines.append(f"  Used: {s.mah_used}/{self._nominal_mah} mAh")
         if s.autonomy_minutes > 0:
             hours = s.autonomy_minutes / 60
             if hours >= 1:
@@ -147,16 +143,18 @@ class BatteryMonitor:
         if s.sag_detected:
             lines.append("  WARNING: Voltage sag detected!")
         fs_labels = {
-            1: "WARNING", 2: "RTL", 3: "LAND", 4: "KILL",
+            1: "WARNING",
+            2: "RTL",
+            3: "LAND",
+            4: "KILL",
         }
         if s.failsafe_level > 0:
-            lines.append(
-                f"  FAILSAFE: {fs_labels.get(s.failsafe_level, '?')}"
-            )
+            lines.append(f"  FAILSAFE: {fs_labels.get(s.failsafe_level, '?')}")
         return "\n".join(lines)
 
     def get_history(
-        self, last_n: int = 60,
+        self,
+        last_n: int = 60,
     ) -> list[tuple[float, int, int]]:
         """Return recent history: [(timestamp, voltage_mv, current_ma), ...]."""
         return list(self._history[-last_n:])

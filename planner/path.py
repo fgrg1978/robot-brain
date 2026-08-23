@@ -6,16 +6,21 @@ import math
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
-PATH_PLAN_MARGIN_CELLS = 2          # inflate obstacles by this many cells
-DIAGONAL_COST = 14142               # sqrt(2) * 10000, integer math
+PATH_PLAN_MARGIN_CELLS = 2  # inflate obstacles by this many cells
+DIAGONAL_COST = 14142  # sqrt(2) * 10000, integer math
 STRAIGHT_COST = 10000
-MAX_PLAN_ITERATIONS = 50_000        # prevent runaway on large maps
+MAX_PLAN_ITERATIONS = 50_000  # prevent runaway on large maps
 
 # 8-connected neighbor offsets: (dc, dr, cost)
 _NEIGHBORS = [
-    (-1, -1, DIAGONAL_COST), (0, -1, STRAIGHT_COST), (1, -1, DIAGONAL_COST),
-    (-1,  0, STRAIGHT_COST),                          (1,  0, STRAIGHT_COST),
-    (-1,  1, DIAGONAL_COST), (0,  1, STRAIGHT_COST), (1,  1, DIAGONAL_COST),
+    (-1, -1, DIAGONAL_COST),
+    (0, -1, STRAIGHT_COST),
+    (1, -1, DIAGONAL_COST),
+    (-1, 0, STRAIGHT_COST),
+    (1, 0, STRAIGHT_COST),
+    (-1, 1, DIAGONAL_COST),
+    (0, 1, STRAIGHT_COST),
+    (1, 1, DIAGONAL_COST),
 ]
 
 
@@ -37,8 +42,11 @@ class PathPlanner:
     # ------------------------------------------------------------------
 
     def plan(
-        self, start_x_mm: float, start_y_mm: float,
-        goal_x_mm: float, goal_y_mm: float,
+        self,
+        start_x_mm: float,
+        start_y_mm: float,
+        goal_x_mm: float,
+        goal_y_mm: float,
     ) -> list[tuple[float, float]]:
         """Plan a path from start to goal (world mm). Returns waypoints or []."""
         start_cell = self._grid.world_to_cell(start_x_mm, start_y_mm)
@@ -145,7 +153,8 @@ class PathPlanner:
         return smoothed
 
     def _cells_to_world(
-        self, path_cells: list[tuple[int, int]],
+        self,
+        path_cells: list[tuple[int, int]],
     ) -> list[tuple[float, float]]:
         """Convert cell path to world coordinates (mm)."""
         return [self._grid.cell_to_world(c, r) for c, r in path_cells]

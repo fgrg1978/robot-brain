@@ -7,8 +7,8 @@ from dataclasses import dataclass, field
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
-SLAM_MAP_RESOLUTION_MM = 50         # 5 cm per cell
-SLAM_MAP_SIZE_CELLS = 1000          # 50 m × 50 m max
+SLAM_MAP_RESOLUTION_MM = 50  # 5 cm per cell
+SLAM_MAP_SIZE_CELLS = 1000  # 50 m × 50 m max
 
 # Log-odds for Bayesian occupancy update
 LOG_ODDS_FREE = -0.4
@@ -25,15 +25,16 @@ ICP_CONVERGENCE_THRESHOLD_MM = 1.0
 ICP_MAX_CORRESPONDENCE_MM = 500
 
 # Scan limits
-SCAN_MAX_RANGE_MM = 12000           # LD19 max range
-SCAN_MIN_RANGE_MM = 100             # ignore very close returns
+SCAN_MAX_RANGE_MM = 12000  # LD19 max range
+SCAN_MIN_RANGE_MM = 100  # ignore very close returns
 
-CDEG_TO_RAD = math.pi / 18000.0    # centidegrees → radians
+CDEG_TO_RAD = math.pi / 18000.0  # centidegrees → radians
 
 
 # ---------------------------------------------------------------------------
 # Occupancy Grid
 # ---------------------------------------------------------------------------
+
 
 class OccupancyGrid:
     """2D log-odds occupancy grid."""
@@ -45,7 +46,7 @@ class OccupancyGrid:
     ):
         self.resolution_mm = resolution_mm
         self.size_cells = size_cells
-        self._origin = size_cells // 2          # grid center = world (0, 0)
+        self._origin = size_cells // 2  # grid center = world (0, 0)
         self.cells: list[float] = [LOG_ODDS_PRIOR] * (size_cells * size_cells)
 
     # -- coordinate transforms ------------------------------------------------
@@ -89,7 +90,8 @@ class OccupancyGrid:
 
     def update_from_scan(
         self,
-        robot_x_mm: float, robot_y_mm: float,
+        robot_x_mm: float,
+        robot_y_mm: float,
         heading_cdeg: float,
         scan_points: list[tuple[int, int]],
     ):
@@ -160,16 +162,17 @@ class OccupancyGrid:
             data = f.read(w * h)
             for i, px in enumerate(data):
                 if px < 64:
-                    self.cells[i] = LOG_ODDS_MAX      # occupied
+                    self.cells[i] = LOG_ODDS_MAX  # occupied
                 elif px > 192:
-                    self.cells[i] = LOG_ODDS_MIN       # free
+                    self.cells[i] = LOG_ODDS_MIN  # free
                 else:
-                    self.cells[i] = LOG_ODDS_PRIOR     # unknown
+                    self.cells[i] = LOG_ODDS_PRIOR  # unknown
 
 
 # ---------------------------------------------------------------------------
 # Scan Matcher (simple ICP)
 # ---------------------------------------------------------------------------
+
 
 class ScanMatcher:
     """Point-to-point ICP for 2D scan matching."""
@@ -195,8 +198,7 @@ class ScanMatcher:
             cos_t = math.cos(dtheta_rad)
             sin_t = math.sin(dtheta_rad)
             transformed = [
-                (cos_t * px - sin_t * py + dx,
-                 sin_t * px + cos_t * py + dy)
+                (cos_t * px - sin_t * py + dx, sin_t * px + cos_t * py + dy)
                 for px, py in curr_points
             ]
 
@@ -230,13 +232,11 @@ class ScanMatcher:
             cy_p = sum(p[1][1] for p in pairs) / n
 
             num = sum(
-                (p[0][0] - cx_t) * (p[1][1] - cy_p) -
-                (p[0][1] - cy_t) * (p[1][0] - cx_p)
+                (p[0][0] - cx_t) * (p[1][1] - cy_p) - (p[0][1] - cy_t) * (p[1][0] - cx_p)
                 for p in pairs
             )
             den = sum(
-                (p[0][0] - cx_t) * (p[1][0] - cx_p) +
-                (p[0][1] - cy_t) * (p[1][1] - cy_p)
+                (p[0][0] - cx_t) * (p[1][0] - cx_p) + (p[0][1] - cy_t) * (p[1][1] - cy_p)
                 for p in pairs
             )
             corr_theta = math.atan2(num, den) if den != 0 else 0.0
@@ -245,9 +245,11 @@ class ScanMatcher:
             dy += corr_dy
             dtheta_rad += corr_theta
 
-            if abs(corr_dx) < ICP_CONVERGENCE_THRESHOLD_MM and \
-               abs(corr_dy) < ICP_CONVERGENCE_THRESHOLD_MM and \
-               abs(corr_theta) < ICP_CONVERGENCE_THRESHOLD_MM * CDEG_TO_RAD:
+            if (
+                abs(corr_dx) < ICP_CONVERGENCE_THRESHOLD_MM
+                and abs(corr_dy) < ICP_CONVERGENCE_THRESHOLD_MM
+                and abs(corr_theta) < ICP_CONVERGENCE_THRESHOLD_MM * CDEG_TO_RAD
+            ):
                 break
 
         return (dx, dy, dtheta_rad / CDEG_TO_RAD)
@@ -256,6 +258,7 @@ class ScanMatcher:
 # ---------------------------------------------------------------------------
 # SLAM (main interface)
 # ---------------------------------------------------------------------------
+
 
 class SLAM:
     """2D LiDAR SLAM: odometry + scan matching + occupancy grid."""
@@ -276,7 +279,9 @@ class SLAM:
 
     def update(
         self,
-        odom_dx_mm: float, odom_dy_mm: float, odom_dtheta_cdeg: float,
+        odom_dx_mm: float,
+        odom_dy_mm: float,
+        odom_dtheta_cdeg: float,
         scan_points: list[tuple[int, int]],
     ) -> tuple[float, float, float]:
         """Process one SLAM step. Returns corrected (x_mm, y_mm, heading_cdeg)."""
@@ -294,7 +299,8 @@ class SLAM:
         # scan match against previous scan
         if self._prev_cartesian:
             dx, dy, dtheta = self._matcher.match(
-                self._prev_cartesian, curr_cartesian,
+                self._prev_cartesian,
+                curr_cartesian,
                 initial_guess=(0.0, 0.0, 0.0),
             )
             pred_x += dx
@@ -331,6 +337,7 @@ class SLAM:
 # ---------------------------------------------------------------------------
 # Bresenham line algorithm
 # ---------------------------------------------------------------------------
+
 
 def _bresenham(x0: int, y0: int, x1: int, y1: int) -> list[tuple[int, int]]:
     """Integer Bresenham line from (x0,y0) to (x1,y1)."""

@@ -21,23 +21,24 @@ logger = logging.getLogger("brain.sensors")
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
-SENSOR_DEBOUNCE_S = 1.0            # ignore repeat triggers within this window
-SENSOR_TRIGGER_COOLDOWN_S = 30.0   # cooldown per sensor type after alert
+SENSOR_DEBOUNCE_S = 1.0  # ignore repeat triggers within this window
+SENSOR_TRIGGER_COOLDOWN_S = 30.0  # cooldown per sensor type after alert
 PIR_LABEL = "pir_motion"
 SOUND_LABEL = "sound_event"
 IR_LABEL = "ir_proximity"
 
 # Sensor flag to label mapping
 SENSOR_FLAG_MAP = {
-    SENSOR_FLAG_PIR:   PIR_LABEL,
+    SENSOR_FLAG_PIR: PIR_LABEL,
     SENSOR_FLAG_SOUND: SOUND_LABEL,
-    SENSOR_FLAG_IR:    IR_LABEL,
+    SENSOR_FLAG_IR: IR_LABEL,
 }
 
 
 @dataclass
 class SensorTrigger:
     """Represents a single sensor trigger event."""
+
     label: str
     timestamp: float
     flag: int
@@ -46,6 +47,7 @@ class SensorTrigger:
 @dataclass
 class SensorState:
     """Tracks per-sensor trigger timing for debounce and cooldown."""
+
     last_trigger_time: dict[int, float] = field(default_factory=dict)
     last_alert_time: dict[int, float] = field(default_factory=dict)
 
@@ -57,14 +59,13 @@ class SensorFusion:
     (don't re-alert for same sensor type within cooldown window).
     """
 
-    def __init__(self, debounce_s: float = SENSOR_DEBOUNCE_S,
-                 cooldown_s: float = SENSOR_TRIGGER_COOLDOWN_S):
+    def __init__(
+        self, debounce_s: float = SENSOR_DEBOUNCE_S, cooldown_s: float = SENSOR_TRIGGER_COOLDOWN_S
+    ):
         self._debounce_s = debounce_s
         self._cooldown_s = cooldown_s
         self._state = SensorState()
-        self._enabled_flags = (
-            SENSOR_FLAG_PIR | SENSOR_FLAG_SOUND | SENSOR_FLAG_IR
-        )
+        self._enabled_flags = SENSOR_FLAG_PIR | SENSOR_FLAG_SOUND | SENSOR_FLAG_IR
 
     @property
     def enabled_flags(self) -> int:

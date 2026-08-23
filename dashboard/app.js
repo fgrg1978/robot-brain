@@ -23,6 +23,8 @@ const BATTERY_CRIT_MV        = 5800;
 const SECONDS_PER_MIN        = 60;
 const SECONDS_PER_HOUR       = 3600;
 const API_BASE               = "";      // same-origin
+const HTTP_UNAUTHORIZED      = 401;
+const TOKEN_STORAGE_KEY      = "robotBrainApiKey";
 
 // ── State ───────────────────────────────────────────────────────────────────
 const state = {
@@ -54,13 +56,66 @@ const dom = {
   cmdFeedback:      $("cmd-feedback"),
 };
 
+// ── API token ───────────────────────────────────────────────────────────────
+// The API tier requires "Authorization: Bearer <ROBOT_BRAIN_API_KEY>" on every
+// non-public route (api.py APIServer._is_authorised). /dashboard/* itself is
+// public so this page loads, but every call it makes — /fleet/robots, /status,
+// /mode, /stop, /fleet/command — is not. This page used to send no header at
+// all, so switching the API to authenticated mode made the whole dashboard go
+// dark, which is a strong incentive to switch it back off. Ask for the token
+// once, keep it in localStorage, re-ask on 401.
+//
+// The token is deliberately NOT taken from (or put in) the URL: query strings
+// end up in browser history, referrers and access logs.
+function getApiToken() {
+  try {
+    return localStorage.getItem(TOKEN_STORAGE_KEY) || "";
+  } catch (e) {
+    return ""; // storage blocked (private mode) — degrade to insecure-mode use
+  }
+}
+
+function setApiToken(token) {
+  try {
+    if (token) localStorage.setItem(TOKEN_STORAGE_KEY, token);
+    else localStorage.removeItem(TOKEN_STORAGE_KEY);
+  } catch (e) { /* storage blocked — token lives for this page load only */ }
+}
+
+// Prompt at most once per page load so a 401 storm from the 2s poll loop
+// cannot produce a prompt storm.
+let tokenPromptShown = false;
+function promptForApiToken() {
+  if (tokenPromptShown) return "";
+  tokenPromptShown = true;
+  const entered = window.prompt(
+    "This brain requires an API token (ROBOT_BRAIN_API_KEY). Paste it to continue:"
+  );
+  setApiToken(entered || "");
+  return entered || "";
+}
+
 // ── HTTP helper with timeout ────────────────────────────────────────────────
-async function fetchJson(url, opts = {}) {
+async function fetchJson(url, opts = {}, allowRetry = true) {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), REQUEST_TIMEOUT_MS);
   try {
-    const resp = await fetch(API_BASE + url, { ...opts, signal: ctrl.signal });
+    const token = getApiToken();
+    // MERGE the caller's headers — the command POSTs pass Content-Type, and
+    // replacing their headers object would break exactly the two endpoints
+    // that move the robot.
+    const headers = { ...(opts.headers || {}) };
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+    const resp = await fetch(API_BASE + url, { ...opts, headers, signal: ctrl.signal });
     if (!resp.ok) {
+      if (resp.status === HTTP_UNAUTHORIZED && allowRetry) {
+        // Either no token yet, or a stale one. Ask, then replay once.
+        const fresh = promptForApiToken();
+        if (fresh) {
+          clearTimeout(timer);
+          return fetchJson(url, opts, false);
+        }
+      }
       return { ok: false, status: resp.status };
     }
     const data = await resp.json();

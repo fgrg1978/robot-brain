@@ -33,7 +33,6 @@ from api import (  # noqa: E402
     _resolve_dashboard_path,
 )
 
-
 # ---------------------------------------------------------------------------
 # Constants — keep the tests free of magic numbers.
 # ---------------------------------------------------------------------------
@@ -51,6 +50,7 @@ EXPECTED_DASHBOARD_FILES = (
 # ---------------------------------------------------------------------------
 # Stub stream writer — collects bytes, mimics asyncio.StreamWriter API.
 # ---------------------------------------------------------------------------
+
 
 class _FakeWriter:
     def __init__(self) -> None:
@@ -73,12 +73,21 @@ class _FakeWriter:
 
 class _FakeBrain:
     """Minimal brain stand-in for APIServer wiring."""
+
     def __init__(self) -> None:
-        self.state = type("S", (), {
-            "connected": False, "sensors": {}, "odom": {},
-            "last_image": b"", "last_sensor_time": 0, "last_image_time": 0,
-            "status": {},
-        })()
+        self.state = type(
+            "S",
+            (),
+            {
+                "connected": False,
+                "sensors": {},
+                "odom": {},
+                "last_image": b"",
+                "last_sensor_time": 0,
+                "last_image_time": 0,
+                "status": {},
+            },
+        )()
         self.robot_type = 0
         self.config = {}
         self.fleet_manager = None
@@ -95,15 +104,14 @@ def _status_line(buf: bytes) -> str:
 def _content_type(buf: bytes) -> Optional[str]:
     for line in buf.split(b"\r\n"):
         if line.lower().startswith(b"content-type:"):
-            return line.split(b":", 1)[1].strip().decode("ascii",
-                                                        errors="replace")
+            return line.split(b":", 1)[1].strip().decode("ascii", errors="replace")
     return None
 
 
 def _body(buf: bytes) -> bytes:
     sep = b"\r\n\r\n"
     idx = buf.find(sep)
-    return buf[idx + len(sep):] if idx >= 0 else b""
+    return buf[idx + len(sep) :] if idx >= 0 else b""
 
 
 async def _get(server: APIServer, path: str) -> bytes:
@@ -117,11 +125,10 @@ async def _get(server: APIServer, path: str) -> bytes:
 # File-level sanity checks
 # ---------------------------------------------------------------------------
 
+
 class TestDashboardFiles:
     def test_dashboard_root_exists(self) -> None:
-        assert os.path.isdir(DASHBOARD_ROOT), (
-            f"dashboard directory missing: {DASHBOARD_ROOT}"
-        )
+        assert os.path.isdir(DASHBOARD_ROOT), f"dashboard directory missing: {DASHBOARD_ROOT}"
 
     @pytest.mark.parametrize("filename", EXPECTED_DASHBOARD_FILES)
     def test_expected_files_present_and_nonempty(self, filename: str) -> None:
@@ -148,7 +155,7 @@ class TestDashboardFiles:
         text = data.decode("utf-8")
         # Must be vanilla JS (no bundler markers, no imports of deps).
         assert "require(" not in text
-        assert "from \"react" not in text
+        assert 'from "react' not in text
         assert "pollFleet" in text
 
     def test_style_css_is_valid_utf8(self) -> None:
@@ -161,6 +168,7 @@ class TestDashboardFiles:
 # ---------------------------------------------------------------------------
 # Route helpers
 # ---------------------------------------------------------------------------
+
 
 class TestPathResolution:
     def test_bare_prefix_serves_index(self) -> None:
@@ -179,16 +187,12 @@ class TestPathResolution:
         assert resolved.endswith("app.js")
 
     def test_missing_file_returns_none(self) -> None:
-        resolved = _resolve_dashboard_path(
-            DASHBOARD_ROUTE_PREFIX + "/does-not-exist.xyz"
-        )
+        resolved = _resolve_dashboard_path(DASHBOARD_ROUTE_PREFIX + "/does-not-exist.xyz")
         assert resolved is None
 
     def test_path_traversal_blocked(self) -> None:
         # /dashboard/../api.py must not resolve outside the dashboard dir.
-        resolved = _resolve_dashboard_path(
-            DASHBOARD_ROUTE_PREFIX + "/../api.py"
-        )
+        resolved = _resolve_dashboard_path(DASHBOARD_ROUTE_PREFIX + "/../api.py")
         assert resolved is None
 
     def test_unrelated_path_returns_none(self) -> None:
@@ -206,13 +210,13 @@ class TestContentTypes:
         assert "text/css" in _guess_content_type("style.css")
 
     def test_unknown_extension(self) -> None:
-        assert _guess_content_type("weird.xyz") \
-            == api._DEFAULT_STATIC_MIME
+        assert _guess_content_type("weird.xyz") == api._DEFAULT_STATIC_MIME
 
 
 # ---------------------------------------------------------------------------
 # Integration: exercise the real router with a stub brain
 # ---------------------------------------------------------------------------
+
 
 class TestDashboardRoute:
     def _server(self) -> APIServer:

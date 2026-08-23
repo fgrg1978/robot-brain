@@ -16,13 +16,14 @@ from perception.rtsp_monitor import (
 )
 from perception.motion_detect import MOTION_THRESHOLD_PCT
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 class FakeVision:
     """Fake VisionPerception for testing."""
+
     def __init__(self, response: str = "CLEAR"):
         self.response = response
         self.calls = []
@@ -35,6 +36,7 @@ class FakeVision:
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
+
 
 class TestConstants:
     def test_scan_interval_positive(self):
@@ -53,6 +55,7 @@ class TestConstants:
 # ---------------------------------------------------------------------------
 # RtspCamera dataclass
 # ---------------------------------------------------------------------------
+
 
 class TestRtspCamera:
     def test_default_values(self):
@@ -84,6 +87,7 @@ class TestRtspCamera:
 # RtspEvent dataclass
 # ---------------------------------------------------------------------------
 
+
 class TestRtspEvent:
     def test_creation(self):
         event = RtspEvent(
@@ -103,8 +107,12 @@ class TestRtspEvent:
     def test_timestamp_auto(self):
         before = time.time()
         event = RtspEvent(
-            camera_name="c", zone_waypoint="z", motion_score=0,
-            vlm_description="", detection_label="", image_data=b"",
+            camera_name="c",
+            zone_waypoint="z",
+            motion_score=0,
+            vlm_description="",
+            detection_label="",
+            image_data=b"",
         )
         assert event.timestamp >= before
 
@@ -112,6 +120,7 @@ class TestRtspEvent:
 # ---------------------------------------------------------------------------
 # cameras_from_config
 # ---------------------------------------------------------------------------
+
 
 class TestCamerasFromConfig:
     def test_empty_config(self):
@@ -124,13 +133,15 @@ class TestCamerasFromConfig:
 
     def test_single_camera(self):
         config = {
-            "rtsp_cameras": [{
-                "name": "jardin",
-                "url": "rtsp://192.168.1.100:554/stream1",
-                "zone_waypoint": "jardin_centro",
-                "scan_interval_s": 10,
-                "motion_threshold_pct": 15,
-            }],
+            "rtsp_cameras": [
+                {
+                    "name": "jardin",
+                    "url": "rtsp://192.168.1.100:554/stream1",
+                    "zone_waypoint": "jardin_centro",
+                    "scan_interval_s": 10,
+                    "motion_threshold_pct": 15,
+                }
+            ],
         }
         cameras = cameras_from_config(config)
         assert len(cameras) == 1
@@ -161,9 +172,11 @@ class TestCamerasFromConfig:
         assert cams[0].enabled is True
 
     def test_disabled_camera(self):
-        config = {"rtsp_cameras": [
-            {"name": "x", "url": "rtsp://x/s", "enabled": False},
-        ]}
+        config = {
+            "rtsp_cameras": [
+                {"name": "x", "url": "rtsp://x/s", "enabled": False},
+            ]
+        }
         cams = cameras_from_config(config)
         assert cams[0].enabled is False
 
@@ -176,6 +189,7 @@ class TestCamerasFromConfig:
 # ---------------------------------------------------------------------------
 # RtspMonitor — sync tests
 # ---------------------------------------------------------------------------
+
 
 class TestRtspMonitor:
     def test_init_no_cameras(self):
@@ -226,6 +240,7 @@ class TestRtspMonitor:
 # RtspMonitor — async tests (VLM analysis)
 # ---------------------------------------------------------------------------
 
+
 class TestRtspMonitorVLM:
     def test_analyze_no_vlm_returns_motion_event(self):
         async def _run():
@@ -237,6 +252,7 @@ class TestRtspMonitorVLM:
             assert event.detection_label == "motion"
             assert event.motion_score == 55.0
             assert "no VLM" in event.vlm_description
+
         asyncio.run(_run())
 
     def test_analyze_vlm_detects_threat(self):
@@ -244,7 +260,8 @@ class TestRtspMonitorVLM:
             vision = FakeVision(response="A person near the gate")
             cam = RtspCamera(name="gate", url="rtsp://x/s", zone_waypoint="gate")
             mon = RtspMonitor(
-                cameras=[cam], vision=vision,
+                cameras=[cam],
+                vision=vision,
                 detect_labels=["person", "vehicle"],
             )
             event = await mon._analyze_with_vlm(cam, b"fake_jpeg", 30.0)
@@ -252,6 +269,7 @@ class TestRtspMonitorVLM:
             assert event.detection_label == "person"
             assert event.vlm_description == "A person near the gate"
             assert len(vision.calls) == 1
+
         asyncio.run(_run())
 
     def test_analyze_vlm_clear_returns_none(self):
@@ -259,11 +277,13 @@ class TestRtspMonitorVLM:
             vision = FakeVision(response="Empty garden, no movement")
             cam = RtspCamera(name="garden", url="rtsp://x/s")
             mon = RtspMonitor(
-                cameras=[cam], vision=vision,
+                cameras=[cam],
+                vision=vision,
                 detect_labels=["person", "vehicle"],
             )
             event = await mon._analyze_with_vlm(cam, b"fake_jpeg", 20.0)
             assert event is None
+
         asyncio.run(_run())
 
     def test_analyze_vlm_error_returns_none(self):
@@ -276,6 +296,7 @@ class TestRtspMonitorVLM:
             mon = RtspMonitor(cameras=[cam], vision=FailVision())
             event = await mon._analyze_with_vlm(cam, b"jpeg", 50.0)
             assert event is None
+
         asyncio.run(_run())
 
     def test_analyze_vlm_multiple_labels(self):
@@ -283,18 +304,21 @@ class TestRtspMonitorVLM:
             vision = FakeVision(response="A vehicle parked by the gate")
             cam = RtspCamera(name="gate", url="rtsp://x/s")
             mon = RtspMonitor(
-                cameras=[cam], vision=vision,
+                cameras=[cam],
+                vision=vision,
                 detect_labels=["person", "vehicle", "fire"],
             )
             event = await mon._analyze_with_vlm(cam, b"data", 25.0)
             assert event is not None
             assert event.detection_label == "vehicle"
+
         asyncio.run(_run())
 
 
 # ---------------------------------------------------------------------------
 # RtspMonitor — lifecycle
 # ---------------------------------------------------------------------------
+
 
 class TestRtspMonitorLifecycle:
     def test_start_stop_empty(self):
@@ -304,6 +328,7 @@ class TestRtspMonitorLifecycle:
             assert mon.running
             await mon.stop()
             assert not mon.running
+
         asyncio.run(_run())
 
     def test_start_idempotent(self):
@@ -313,6 +338,7 @@ class TestRtspMonitorLifecycle:
             await mon.start()  # should not error
             assert mon.running
             await mon.stop()
+
         asyncio.run(_run())
 
     def test_stop_cancels_tasks(self):
@@ -323,6 +349,7 @@ class TestRtspMonitorLifecycle:
             assert len(mon._tasks) == 1
             await mon.stop()
             assert len(mon._tasks) == 0
+
         asyncio.run(_run())
 
     def test_disabled_camera_not_started(self):
@@ -332,12 +359,14 @@ class TestRtspMonitorLifecycle:
             await mon.start()
             assert len(mon._tasks) == 0
             await mon.stop()
+
         asyncio.run(_run())
 
 
 # ---------------------------------------------------------------------------
 # RtspMonitor — threat callback
 # ---------------------------------------------------------------------------
+
 
 class TestRtspMonitorCallback:
     def test_on_threat_called(self):
@@ -359,6 +388,7 @@ class TestRtspMonitorCallback:
             await on_threat(event)
             assert len(events_received) == 1
             assert events_received[0].camera_name == "cam"
+
         asyncio.run(_run())
 
     def test_on_threat_with_vlm_detection(self):
@@ -371,7 +401,9 @@ class TestRtspMonitorCallback:
             vision = FakeVision(response="person walking in driveway")
             cam = RtspCamera(name="driveway", url="rtsp://x/s", zone_waypoint="z")
             mon = RtspMonitor(
-                cameras=[cam], vision=vision, on_threat=on_threat,
+                cameras=[cam],
+                vision=vision,
+                on_threat=on_threat,
                 detect_labels=["person"],
             )
             event = await mon._analyze_with_vlm(cam, b"data", 40.0)
@@ -379,4 +411,5 @@ class TestRtspMonitorCallback:
             assert event.detection_label == "person"
             await on_threat(event)
             assert len(events_received) == 1
+
         asyncio.run(_run())

@@ -22,11 +22,11 @@ logger = logging.getLogger("brain.gps")
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
-EARTH_RADIUS_M = 6_371_000        # mean Earth radius
-DEG7_TO_DEG = 1e-7                # brain_protocol uses degrees × 10^7
-GEOFENCE_MARGIN_M = 5.0           # warn when this close to boundary
-WAYPOINT_REACH_M = 3.0            # close enough to consider waypoint reached
-GPS_STALE_S = 10.0                # GPS fix older than this is stale
+EARTH_RADIUS_M = 6_371_000  # mean Earth radius
+DEG7_TO_DEG = 1e-7  # brain_protocol uses degrees × 10^7
+GEOFENCE_MARGIN_M = 5.0  # warn when this close to boundary
+WAYPOINT_REACH_M = 3.0  # close enough to consider waypoint reached
+GPS_STALE_S = 10.0  # GPS fix older than this is stale
 
 
 # ---------------------------------------------------------------------------
@@ -35,22 +35,25 @@ GPS_STALE_S = 10.0                # GPS fix older than this is stale
 @dataclass
 class GpsPosition:
     """GPS position in decimal degrees."""
+
     lat: float = 0.0
     lon: float = 0.0
     alt_m: float = 0.0
-    fix: int = 0                   # 0=none, 2=2D, 3=3D
+    fix: int = 0  # 0=none, 2=2D, 3=3D
     satellites: int = 0
     timestamp: float = field(default_factory=time.time)
 
     @classmethod
-    def from_deg7(cls, lat_deg7: int, lon_deg7: int, alt_mm: int = 0,
-                  fix: int = 0, sats: int = 0) -> "GpsPosition":
+    def from_deg7(
+        cls, lat_deg7: int, lon_deg7: int, alt_mm: int = 0, fix: int = 0, sats: int = 0
+    ) -> "GpsPosition":
         """Create from brain protocol format (degrees × 10^7)."""
         return cls(
             lat=lat_deg7 * DEG7_TO_DEG,
             lon=lon_deg7 * DEG7_TO_DEG,
             alt_m=alt_mm / 1000.0,
-            fix=fix, satellites=sats,
+            fix=fix,
+            satellites=sats,
         )
 
     def has_fix(self) -> bool:
@@ -67,10 +70,11 @@ class GpsPosition:
 @dataclass
 class GpsWaypoint:
     """A GPS waypoint with an optional action at arrival."""
+
     lat: float
     lon: float
     alt_m: float = 0.0
-    action: str = ""               # skill to execute on arrival (SCAN_360, etc.)
+    action: str = ""  # skill to execute on arrival (SCAN_360, etc.)
     label: str = ""
     reached: bool = False
 
@@ -78,6 +82,7 @@ class GpsWaypoint:
 @dataclass
 class GeofenceViolation:
     """Details of a geofence violation."""
+
     distance_to_boundary_m: float
     nearest_edge_idx: int
     inside: bool
@@ -121,9 +126,12 @@ class Geofence:
         for i in range(n):
             j = (i + 1) % n
             d = _point_to_segment_m(
-                lat, lon,
-                self._boundary[i][0], self._boundary[i][1],
-                self._boundary[j][0], self._boundary[j][1],
+                lat,
+                lon,
+                self._boundary[i][0],
+                self._boundary[i][1],
+                self._boundary[j][0],
+                self._boundary[j][1],
             )
             if d < min_dist:
                 min_dist = d
@@ -170,14 +178,23 @@ class GpsMission:
         return self._active
 
     def add_waypoint(
-        self, lat: float, lon: float, alt_m: float = 0.0,
-        action: str = "", label: str = "",
+        self,
+        lat: float,
+        lon: float,
+        alt_m: float = 0.0,
+        action: str = "",
+        label: str = "",
     ):
         """Add a waypoint to the mission."""
-        self._waypoints.append(GpsWaypoint(
-            lat=lat, lon=lon, alt_m=alt_m,
-            action=action, label=label,
-        ))
+        self._waypoints.append(
+            GpsWaypoint(
+                lat=lat,
+                lon=lon,
+                alt_m=alt_m,
+                action=action,
+                label=label,
+            )
+        )
 
     def clear(self):
         """Clear all waypoints."""
@@ -247,14 +264,15 @@ class GpsMission:
 # GPS math helpers
 # ---------------------------------------------------------------------------
 
+
 def haversine_m(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     """Haversine distance between two GPS coordinates in meters."""
     d_lat = math.radians(lat2 - lat1)
     d_lon = math.radians(lon2 - lon1)
-    a = (math.sin(d_lat / 2) ** 2 +
-         math.cos(math.radians(lat1)) *
-         math.cos(math.radians(lat2)) *
-         math.sin(d_lon / 2) ** 2)
+    a = (
+        math.sin(d_lat / 2) ** 2
+        + math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) * math.sin(d_lon / 2) ** 2
+    )
     c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
     return EARTH_RADIUS_M * c
 
@@ -265,14 +283,15 @@ def bearing_deg(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     lat1_r = math.radians(lat1)
     lat2_r = math.radians(lat2)
     x = math.sin(d_lon) * math.cos(lat2_r)
-    y = (math.cos(lat1_r) * math.sin(lat2_r) -
-         math.sin(lat1_r) * math.cos(lat2_r) * math.cos(d_lon))
+    y = math.cos(lat1_r) * math.sin(lat2_r) - math.sin(lat1_r) * math.cos(lat2_r) * math.cos(d_lon)
     bearing = math.degrees(math.atan2(x, y))
     return (bearing + 360) % 360
 
 
 def _point_in_polygon(
-    lat: float, lon: float, polygon: list[tuple[float, float]],
+    lat: float,
+    lon: float,
+    polygon: list[tuple[float, float]],
 ) -> bool:
     """Ray-casting algorithm for point-in-polygon test.
     polygon is list of (lat, lon) tuples."""
@@ -282,17 +301,21 @@ def _point_in_polygon(
     for i in range(n):
         lat_i, lon_i = polygon[i]
         lat_j, lon_j = polygon[j]
-        if ((lon_i > lon) != (lon_j > lon)) and \
-                (lat < (lat_j - lat_i) * (lon - lon_i) / (lon_j - lon_i) + lat_i):
+        if ((lon_i > lon) != (lon_j > lon)) and (
+            lat < (lat_j - lat_i) * (lon - lon_i) / (lon_j - lon_i) + lat_i
+        ):
             inside = not inside
         j = i
     return inside
 
 
 def _point_to_segment_m(
-    lat: float, lon: float,
-    lat1: float, lon1: float,
-    lat2: float, lon2: float,
+    lat: float,
+    lon: float,
+    lat1: float,
+    lon1: float,
+    lat2: float,
+    lon2: float,
 ) -> float:
     """Approximate distance from point to line segment (meters)."""
     d1 = haversine_m(lat, lon, lat1, lon1)
@@ -301,9 +324,14 @@ def _point_to_segment_m(
     if seg == 0:
         return d1
     # Project point onto segment
-    t = max(0, min(1, ((lat - lat1) * (lat2 - lat1) +
-                       (lon - lon1) * (lon2 - lon1)) /
-                      ((lat2 - lat1) ** 2 + (lon2 - lon1) ** 2 + 1e-12)))
+    t = max(
+        0,
+        min(
+            1,
+            ((lat - lat1) * (lat2 - lat1) + (lon - lon1) * (lon2 - lon1))
+            / ((lat2 - lat1) ** 2 + (lon2 - lon1) ** 2 + 1e-12),
+        ),
+    )
     proj_lat = lat1 + t * (lat2 - lat1)
     proj_lon = lon1 + t * (lon2 - lon1)
     return haversine_m(lat, lon, proj_lat, proj_lon)

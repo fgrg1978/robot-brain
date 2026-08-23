@@ -20,46 +20,50 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from typing import Optional
 
-
 # ── Config dataclasses ────────────────────────────────────────────────────────
+
 
 @dataclass
 class PushoverCfg:
-    enabled:      bool
-    user_key:     str
-    api_token:    str
-    priority:     int  = 1
-    sound:        str  = "siren"
+    enabled: bool
+    user_key: str
+    api_token: str
+    priority: int = 1
+    sound: str = "siren"
     attach_image: bool = True
+
 
 @dataclass
 class TelegramCfg:
-    enabled:   bool
+    enabled: bool
     bot_token: str
-    chat_id:   str
-    commands:  bool = True
+    chat_id: str
+    commands: bool = True
+
 
 @dataclass
 class EmailCfg:
-    enabled:   bool
+    enabled: bool
     smtp_host: str
     smtp_port: int
-    username:  str
-    password:  str
-    to:        str
+    username: str
+    password: str
+    to: str
+
 
 @dataclass
 class WebhookCfg:
     enabled: bool
-    url:     str
+    url: str
     headers: dict = field(default_factory=dict)
+
 
 @dataclass
 class NotificationsCfg:
     pushover: PushoverCfg
     telegram: TelegramCfg
-    email:    EmailCfg
-    webhook:  WebhookCfg
+    email: EmailCfg
+    webhook: WebhookCfg
 
     @classmethod
     def from_dict(cls, d: dict) -> "NotificationsCfg":
@@ -100,6 +104,7 @@ class NotificationsCfg:
 
 # ── HTTP helpers (sync, run in thread) ───────────────────────────────────────
 
+
 def _http_post_json(url: str, payload: dict, headers: dict | None = None) -> int:
     """POST JSON, return HTTP status code."""
     data = json.dumps(payload).encode()
@@ -119,6 +124,7 @@ def _http_post_json(url: str, payload: dict, headers: dict | None = None) -> int
 def _http_post_multipart(url: str, fields: dict, files: dict | None = None) -> int:
     """POST multipart/form-data (for Pushover image attach, Telegram sendPhoto)."""
     import io, mimetypes
+
     boundary = b"----RobotBrainBoundary"
     body = io.BytesIO()
 
@@ -152,15 +158,17 @@ def _http_post_multipart(url: str, fields: dict, files: dict | None = None) -> i
 
 # ── Backend implementations (sync) ────────────────────────────────────────────
 
-def _pushover_send(cfg: PushoverCfg, title: str, message: str,
-                   image: Optional[bytes] = None) -> bool:
+
+def _pushover_send(
+    cfg: PushoverCfg, title: str, message: str, image: Optional[bytes] = None
+) -> bool:
     fields = {
-        "token":    cfg.api_token,
-        "user":     cfg.user_key,
-        "title":    title,
-        "message":  message,
+        "token": cfg.api_token,
+        "user": cfg.user_key,
+        "title": title,
+        "message": message,
         "priority": cfg.priority,
-        "sound":    cfg.sound,
+        "sound": cfg.sound,
     }
     if image and cfg.attach_image:
         status = _http_post_multipart(
@@ -189,8 +197,7 @@ def _telegram_send_photo(cfg: TelegramCfg, caption: str, image: bytes) -> bool:
     return status == 200
 
 
-def _email_send(cfg: EmailCfg, subject: str, body: str,
-                image: Optional[bytes] = None) -> bool:
+def _email_send(cfg: EmailCfg, subject: str, body: str, image: Optional[bytes] = None) -> bool:
     msg: MIMEMultipart | MIMEText
     if image:
         msg = MIMEMultipart()
@@ -226,14 +233,16 @@ def _webhook_send(cfg: WebhookCfg, title: str, message: str) -> bool:
 
 # ── Notifier ─────────────────────────────────────────────────────────────────
 
+
 class Notifier:
     """Async notification dispatcher. Fires all enabled backends in parallel."""
 
     def __init__(self, config: dict):
         self.cfg = NotificationsCfg.from_dict(config)
 
-    async def alert(self, message: str, title: str = "Robot Alert",
-                    image: Optional[bytes] = None) -> dict[str, bool]:
+    async def alert(
+        self, message: str, title: str = "Robot Alert", image: Optional[bytes] = None
+    ) -> dict[str, bool]:
         """Send alert through all enabled backends.
 
         Returns dict of backend -> success.
@@ -256,23 +265,16 @@ class Notifier:
                 )
 
         if self.cfg.email.enabled and self.cfg.email.username:
-            tasks["email"] = asyncio.to_thread(
-                _email_send, self.cfg.email, title, message, image
-            )
+            tasks["email"] = asyncio.to_thread(_email_send, self.cfg.email, title, message, image)
 
         if self.cfg.webhook.enabled and self.cfg.webhook.url:
-            tasks["webhook"] = asyncio.to_thread(
-                _webhook_send, self.cfg.webhook, title, message
-            )
+            tasks["webhook"] = asyncio.to_thread(_webhook_send, self.cfg.webhook, title, message)
 
         if not tasks:
             return {}
 
         results = await asyncio.gather(*tasks.values(), return_exceptions=True)
-        return {
-            name: (r is True)
-            for name, r in zip(tasks.keys(), results)
-        }
+        return {name: (r is True) for name, r in zip(tasks.keys(), results)}
 
     async def info(self, message: str) -> dict[str, bool]:
         """Send low-priority info (Telegram only, no Pushover siren)."""

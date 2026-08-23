@@ -1,19 +1,34 @@
 """Tests for planner/battery.py — battery monitoring."""
 
 from planner.battery import (
-    BatteryMonitor, BatteryState,
-    BATTERY_NOMINAL_MAH, BATTERY_FULL_MV, BATTERY_EMPTY_MV, BATTERY_CELLS,
-    FAILSAFE_WARNING_PCT, FAILSAFE_RTL_PCT, FAILSAFE_LAND_PCT, FAILSAFE_KILL_PCT,
-    VOLTAGE_SAG_THRESHOLD_MV, HISTORY_MAX_SAMPLES,
+    BatteryMonitor,
+    BatteryState,
+    BATTERY_NOMINAL_MAH,
+    BATTERY_FULL_MV,
+    BATTERY_EMPTY_MV,
+    BATTERY_CELLS,
+    FAILSAFE_WARNING_PCT,
+    FAILSAFE_RTL_PCT,
+    FAILSAFE_LAND_PCT,
+    FAILSAFE_KILL_PCT,
+    VOLTAGE_SAG_THRESHOLD_MV,
+    HISTORY_MAX_SAMPLES,
 )
 
 
 class TestConstants:
-    def test_nominal_mah_positive(self): assert BATTERY_NOMINAL_MAH > 0
-    def test_full_above_empty(self): assert BATTERY_FULL_MV > BATTERY_EMPTY_MV
-    def test_cells_positive(self): assert BATTERY_CELLS >= 1
+    def test_nominal_mah_positive(self):
+        assert BATTERY_NOMINAL_MAH > 0
+
+    def test_full_above_empty(self):
+        assert BATTERY_FULL_MV > BATTERY_EMPTY_MV
+
+    def test_cells_positive(self):
+        assert BATTERY_CELLS >= 1
+
     def test_failsafe_ordering(self):
         assert FAILSAFE_WARNING_PCT > FAILSAFE_RTL_PCT > FAILSAFE_LAND_PCT > FAILSAFE_KILL_PCT
+
 
 class TestBatteryMonitor:
     def test_initial_state(self):
@@ -57,7 +72,9 @@ class TestBatteryMonitor:
     def test_no_sag_gradual(self):
         m = BatteryMonitor()
         m.update(voltage_mv=7400)
-        import time; time.sleep(0.01)
+        import time
+
+        time.sleep(0.01)
         m.update(voltage_mv=7350)
         assert not m.state.sag_detected
 

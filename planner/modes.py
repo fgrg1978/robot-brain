@@ -12,26 +12,27 @@ from typing import Optional
 
 @dataclass
 class ModeConfig:
-    name:           str
-    skills:         list[str]          # ordered skill names (for scripted modes)
-    loop:           bool = True        # repeat skill list on completion
-    detect:         list[str] = field(default_factory=list)  # classes to watch for
-    on_detect:      list[str] = field(default_factory=list)  # [notify, alert, stop, ...]
-    waypoints:      list[str] = field(default_factory=list)  # location names
+    name: str
+    skills: list[str]  # ordered skill names (for scripted modes)
+    loop: bool = True  # repeat skill list on completion
+    detect: list[str] = field(default_factory=list)  # classes to watch for
+    on_detect: list[str] = field(default_factory=list)  # [notify, alert, stop, ...]
+    waypoints: list[str] = field(default_factory=list)  # location names
     scan_interval_s: Optional[float] = None
-    planner:        str = "scripted"   # scripted | llm
-    schedule:       str = "always"     # always | <cron expression>
+    planner: str = "scripted"  # scripted | llm
+    schedule: str = "always"  # always | <cron expression>
     # Guard-specific settings
-    sensors:         list[str] = field(default_factory=list)   # [pir, sound, ir]
-    perimeter_only:  bool = False     # ignore interior detections
-    patrol_speed_pct: int = 0         # override patrol speed (0 = use default)
-    continuous_buzzer: bool = False    # non-stop buzzer in this mode
-    continuous_led:    bool = False    # non-stop LED in this mode
-    led_on_detect:     bool = False   # turn on LED on detection (night mode)
-    track_intruder:    bool = False   # auto-track detected persons
+    sensors: list[str] = field(default_factory=list)  # [pir, sound, ir]
+    perimeter_only: bool = False  # ignore interior detections
+    patrol_speed_pct: int = 0  # override patrol speed (0 = use default)
+    continuous_buzzer: bool = False  # non-stop buzzer in this mode
+    continuous_led: bool = False  # non-stop LED in this mode
+    led_on_detect: bool = False  # turn on LED on detection (night mode)
+    track_intruder: bool = False  # auto-track detected persons
 
 
 # ── Factory ───────────────────────────────────────────────────────────────────
+
 
 def load_modes(config: dict) -> dict[str, ModeConfig]:
     """Parse the 'modes' section from config.yaml into ModeConfig objects."""

@@ -65,96 +65,100 @@ from protocol import (
     read_packet,
 )
 
-
 # ── Physics / limits ─────────────────────────────────────────────────────────
 
 # Wheeled / ackermann
-WHEEL_BASE_MM         = 142           # Yahboom chassis 310
-ACKERMANN_WB_MM       = 250           # 1/10 RC-car wheelbase
-TICKS_PER_M           = 1000
-MM_PER_M              = 1000
-MAX_SPEED_MM_S        = 500           # 100 % throttle = 0.5 m/s
-ACKERMANN_MAX_STEER_CDEG = 3500       # ±35 °
+WHEEL_BASE_MM = 142  # Yahboom chassis 310
+ACKERMANN_WB_MM = 250  # 1/10 RC-car wheelbase
+TICKS_PER_M = 1000
+MM_PER_M = 1000
+MAX_SPEED_MM_S = 500  # 100 % throttle = 0.5 m/s
+ACKERMANN_MAX_STEER_CDEG = 3500  # ±35 °
 
 # Drone
-DRONE_MAX_CLIMB_M_S   = 3.0           # m/s at full throttle delta
-DRONE_MAX_TILT_M_S2   = 5.0           # m/s² per PWM unit of roll/pitch
-DRONE_MAX_YAW_DPS     = 180.0         # deg/s at full yaw PWM
-DRONE_PWM_NEUTRAL     = 1500
-DRONE_PWM_MIN         = 1000
-DRONE_PWM_MAX         = 2000
-DRONE_PWM_SPAN_HALF   = DRONE_PWM_MAX - DRONE_PWM_NEUTRAL   # 500
-DRONE_HOVER_PWM       = 1450          # throttle at which gravity is balanced
-DRONE_GRAVITY_M_S2    = 9.81
+DRONE_MAX_CLIMB_M_S = 3.0  # m/s at full throttle delta
+DRONE_MAX_TILT_M_S2 = 5.0  # m/s² per PWM unit of roll/pitch
+DRONE_MAX_YAW_DPS = 180.0  # deg/s at full yaw PWM
+DRONE_PWM_NEUTRAL = 1500
+DRONE_PWM_MIN = 1000
+DRONE_PWM_MAX = 2000
+DRONE_PWM_SPAN_HALF = DRONE_PWM_MAX - DRONE_PWM_NEUTRAL  # 500
+DRONE_HOVER_PWM = 1450  # throttle at which gravity is balanced
+DRONE_GRAVITY_M_S2 = 9.81
 
 # Common
-BATTERY_START_MV      = 7400
-BATTERY_MIN_MV        = 0
-BATTERY_DRAIN_MV_S    = 0.5           # idle drain
-BATTERY_LOAD_FACTOR   = 3.0           # multiplier at full throttle
-ENCODER_NOISE_TICKS   = 2
-ACCEL_NOISE_MG        = 2
-GYRO_NOISE_MDPS       = 2
-GRAVITY_MG_Z          = 1000          # 1 g, +Z when level
+BATTERY_START_MV = 7400
+BATTERY_MIN_MV = 0
+BATTERY_DRAIN_MV_S = 0.5  # idle drain
+BATTERY_LOAD_FACTOR = 3.0  # multiplier at full throttle
+ENCODER_NOISE_TICKS = 2
+ACCEL_NOISE_MG = 2
+GYRO_NOISE_MDPS = 2
+GRAVITY_MG_Z = 1000  # 1 g, +Z when level
 
-DEFAULT_START_X_MM    = 1000.0
-DEFAULT_START_Y_MM    = 1000.0
-DEFAULT_START_Z_MM    = 0.0
+DEFAULT_START_X_MM = 1000.0
+DEFAULT_START_Y_MM = 1000.0
+DEFAULT_START_Z_MM = 0.0
 DEFAULT_START_HDG_DEG = 0.0
-DEFAULT_ARENA_MM      = 10000.0
+DEFAULT_ARENA_MM = 10000.0
 
 # Humanoid
 HUMANOID_DEFAULT_JOINTS = 12
 HUMANOID_POSE_STAND_CDEG = 0
 
 # GPS — default "field" location so the drone has a valid fix
-DEFAULT_GPS_LAT_DEG7  = 400000000     # 40.0000000 °
-DEFAULT_GPS_LON_DEG7  = -37000000     # -3.7000000 °
-DEFAULT_GPS_ALT_CM    = 10000         # 100 m MSL
-GPS_DEG7_SCALE        = 1e7
-METERS_PER_DEG_LAT    = 111320.0      # approximate equirectangular
+DEFAULT_GPS_LAT_DEG7 = 400000000  # 40.0000000 °
+DEFAULT_GPS_LON_DEG7 = -37000000  # -3.7000000 °
+DEFAULT_GPS_ALT_CM = 10000  # 100 m MSL
+GPS_DEG7_SCALE = 1e7
+METERS_PER_DEG_LAT = 111320.0  # approximate equirectangular
 
 # Barometer / sonar
-BARO_SEA_LEVEL_PA     = 101325
-BARO_PA_PER_M         = 12            # approximate near sea level
-SONAR_MAX_MM          = 4000
+BARO_SEA_LEVEL_PA = 101325
+BARO_PA_PER_M = 12  # approximate near sea level
+SONAR_MAX_MM = 4000
 
 # Magnetometer — simple heading model in µT
-MAG_FIELD_UT          = 45
+MAG_FIELD_UT = 45
 
 # Frame rates
-DEFAULT_SENSOR_HZ     = 20.0
-DEFAULT_CAMERA_HZ     = 2.0
-DEFAULT_PHYSICS_HZ    = 100.0
-MIN_TICK_INTERVAL_S   = 1e-6
+DEFAULT_SENSOR_HZ = 20.0
+DEFAULT_CAMERA_HZ = 2.0
+DEFAULT_PHYSICS_HZ = 100.0
+MIN_TICK_INTERVAL_S = 1e-6
 
 # Camera (synthetic gradient)
-CAM_WIDTH_PX          = 160
-CAM_HEIGHT_PX         = 120
-CAM_FORMAT_JPEG       = 1
-CAM_FORMAT_RAW_RGB    = 2
-CAM_HEADER_FMT        = "<HHB"
-CAM_HEADER_SIZE       = struct.calcsize(CAM_HEADER_FMT)
+CAM_WIDTH_PX = 160
+CAM_HEIGHT_PX = 120
+CAM_FORMAT_JPEG = 1
+CAM_FORMAT_RAW_RGB = 2
+CAM_HEADER_FMT = "<HHB"
+CAM_HEADER_SIZE = struct.calcsize(CAM_HEADER_FMT)
 
 # Arena wall clamp offset — keep robot inside bounds
-ARENA_WALL_EPS_MM     = 10.0
+ARENA_WALL_EPS_MM = 10.0
 
 # Default network
-DEFAULT_BRAIN_HOST    = "127.0.0.1"
-DEFAULT_BRAIN_PORT    = 8000
+DEFAULT_BRAIN_HOST = "127.0.0.1"
+DEFAULT_BRAIN_PORT = 8000
 
 # Scenario duration defaults (seconds)
-SCEN_SHORT_S          = 2.0
-SCEN_MEDIUM_S         = 5.0
-SCEN_LONG_S           = 10.0
+SCEN_SHORT_S = 2.0
+SCEN_MEDIUM_S = 5.0
+SCEN_LONG_S = 10.0
+
 
 # Conversion helpers
-def _deg_to_rad(d: float) -> float: return d * math.pi / 180.0
+def _deg_to_rad(d: float) -> float:
+    return d * math.pi / 180.0
+
+
 def _clamp(v: float, lo: float, hi: float) -> float:
     return lo if v < lo else (hi if v > hi else v)
 
 
 # ── Synthetic camera ─────────────────────────────────────────────────────────
+
 
 def synthetic_camera_payload(
     width: int = CAM_WIDTH_PX,
@@ -202,6 +206,7 @@ def synthetic_camera_payload(
 
 # ── SITLRobot — unified simulator ────────────────────────────────────────────
 
+
 @dataclass
 class SITLRobot:
     """Unified robot simulator.
@@ -214,42 +219,42 @@ class SITLRobot:
     robot_type: int = ROBOT_WHEELED
 
     # Pose (right-hand, ENU: x=east_mm, y=north_mm, z=up_mm)
-    x_mm:   float = DEFAULT_START_X_MM
-    y_mm:   float = DEFAULT_START_Y_MM
-    z_mm:   float = DEFAULT_START_Z_MM
+    x_mm: float = DEFAULT_START_X_MM
+    y_mm: float = DEFAULT_START_Y_MM
+    z_mm: float = DEFAULT_START_Z_MM
     hdg_deg: float = DEFAULT_START_HDG_DEG
 
     # Velocities (m/s / deg/s)
-    vx_m_s:  float = 0.0
-    vy_m_s:  float = 0.0
-    vz_m_s:  float = 0.0
+    vx_m_s: float = 0.0
+    vy_m_s: float = 0.0
+    vz_m_s: float = 0.0
     yaw_rate_dps: float = 0.0
 
     # Actuator state (last command received)
-    speed_l_pct:  int = 0       # wheeled / ackermann
-    speed_r_pct:  int = 0       # wheeled
+    speed_l_pct: int = 0  # wheeled / ackermann
+    speed_r_pct: int = 0  # wheeled
     ackermann_steer_cdeg: int = 0
     drone_throttle_pwm: int = DRONE_PWM_MIN
-    drone_roll_pwm:  int = DRONE_PWM_NEUTRAL
+    drone_roll_pwm: int = DRONE_PWM_NEUTRAL
     drone_pitch_pwm: int = DRONE_PWM_NEUTRAL
-    drone_yaw_pwm:   int = DRONE_PWM_NEUTRAL
+    drone_yaw_pwm: int = DRONE_PWM_NEUTRAL
     humanoid_joints_cdeg: list[int] = field(default_factory=list)
     flags: int = 0
 
     # Derived / integrated sensors
-    enc_l:          int = 0
-    enc_r:          int = 0
-    odom_dist_mm:   int = 0
-    odom_hdg_cdeg:  int = 0
-    battery_mv:     float = BATTERY_START_MV
+    enc_l: int = 0
+    enc_r: int = 0
+    odom_dist_mm: int = 0
+    odom_hdg_cdeg: int = 0
+    battery_mv: float = BATTERY_START_MV
 
     # GPS origin (for drone lat/lon integration)
     gps_origin_lat_deg7: int = DEFAULT_GPS_LAT_DEG7
     gps_origin_lon_deg7: int = DEFAULT_GPS_LON_DEG7
-    gps_origin_alt_cm:   int = DEFAULT_GPS_ALT_CM
+    gps_origin_alt_cm: int = DEFAULT_GPS_ALT_CM
 
     # Arena (keeps simulator bounded for tests)
-    arena_width_mm:  float = DEFAULT_ARENA_MM
+    arena_width_mm: float = DEFAULT_ARENA_MM
     arena_height_mm: float = DEFAULT_ARENA_MM
 
     # Internal
@@ -278,14 +283,15 @@ class SITLRobot:
 
         elif cmd.actuator_type == ACT_ACKERMANN and len(cmd.channels) >= 2:
             self.speed_l_pct = int(_clamp(cmd.channels[0], -100, 100))
-            self.ackermann_steer_cdeg = int(_clamp(
-                cmd.channels[1], -ACKERMANN_MAX_STEER_CDEG, ACKERMANN_MAX_STEER_CDEG))
+            self.ackermann_steer_cdeg = int(
+                _clamp(cmd.channels[1], -ACKERMANN_MAX_STEER_CDEG, ACKERMANN_MAX_STEER_CDEG)
+            )
 
         elif cmd.actuator_type == ACT_QUAD_ROTOR and len(cmd.channels) >= 4:
             self.drone_throttle_pwm = int(_clamp(cmd.channels[0], DRONE_PWM_MIN, DRONE_PWM_MAX))
-            self.drone_roll_pwm     = int(_clamp(cmd.channels[1], DRONE_PWM_MIN, DRONE_PWM_MAX))
-            self.drone_pitch_pwm    = int(_clamp(cmd.channels[2], DRONE_PWM_MIN, DRONE_PWM_MAX))
-            self.drone_yaw_pwm      = int(_clamp(cmd.channels[3], DRONE_PWM_MIN, DRONE_PWM_MAX))
+            self.drone_roll_pwm = int(_clamp(cmd.channels[1], DRONE_PWM_MIN, DRONE_PWM_MAX))
+            self.drone_pitch_pwm = int(_clamp(cmd.channels[2], DRONE_PWM_MIN, DRONE_PWM_MAX))
+            self.drone_yaw_pwm = int(_clamp(cmd.channels[3], DRONE_PWM_MIN, DRONE_PWM_MAX))
 
         elif cmd.actuator_type == ACT_HUMANOID and cmd.channels:
             self.humanoid_joints_cdeg = [int(c) for c in cmd.channels]
@@ -318,8 +324,11 @@ class SITLRobot:
             pass
 
         # Battery drain common to all types
-        self.battery_mv = max(BATTERY_MIN_MV, self.battery_mv
-                              - BATTERY_DRAIN_MV_S * dt * (1.0 + self._load_factor() * BATTERY_LOAD_FACTOR))
+        self.battery_mv = max(
+            BATTERY_MIN_MV,
+            self.battery_mv
+            - BATTERY_DRAIN_MV_S * dt * (1.0 + self._load_factor() * BATTERY_LOAD_FACTOR),
+        )
 
     def _load_factor(self) -> float:
         if self.robot_type in (ROBOT_WHEELED, ROBOT_ACKERMANN):
@@ -331,7 +340,7 @@ class SITLRobot:
         return 0.0
 
     def _step_wheeled(self, dt: float) -> None:
-        vl = self.speed_l_pct / 100.0 * MAX_SPEED_MM_S   # mm/s
+        vl = self.speed_l_pct / 100.0 * MAX_SPEED_MM_S  # mm/s
         vr = self.speed_r_pct / 100.0 * MAX_SPEED_MM_S
         v_center = (vl + vr) / 2.0
         omega_rad = (vr - vl) / WHEEL_BASE_MM
@@ -387,10 +396,10 @@ class SITLRobot:
         self.z_mm = new_z
 
         # Roll / pitch -> horizontal acceleration in body frame
-        roll_ratio  = (self.drone_roll_pwm  - DRONE_PWM_NEUTRAL) / DRONE_PWM_SPAN_HALF
+        roll_ratio = (self.drone_roll_pwm - DRONE_PWM_NEUTRAL) / DRONE_PWM_SPAN_HALF
         pitch_ratio = (self.drone_pitch_pwm - DRONE_PWM_NEUTRAL) / DRONE_PWM_SPAN_HALF
         ax_body = pitch_ratio * DRONE_MAX_TILT_M_S2
-        ay_body = roll_ratio  * DRONE_MAX_TILT_M_S2
+        ay_body = roll_ratio * DRONE_MAX_TILT_M_S2
         hdg_rad = _deg_to_rad(self.hdg_deg)
         # Body -> world
         ax_world = ax_body * math.cos(hdg_rad) - ay_body * math.sin(hdg_rad)
@@ -409,10 +418,12 @@ class SITLRobot:
         self._move_clamped(dx_mm, dy_mm, 0.0)  # z already updated above
 
     def _move_clamped(self, dx_mm: float, dy_mm: float, dz_mm: float) -> None:
-        self.x_mm = _clamp(self.x_mm + dx_mm,
-                            ARENA_WALL_EPS_MM, self.arena_width_mm - ARENA_WALL_EPS_MM)
-        self.y_mm = _clamp(self.y_mm + dy_mm,
-                            ARENA_WALL_EPS_MM, self.arena_height_mm - ARENA_WALL_EPS_MM)
+        self.x_mm = _clamp(
+            self.x_mm + dx_mm, ARENA_WALL_EPS_MM, self.arena_width_mm - ARENA_WALL_EPS_MM
+        )
+        self.y_mm = _clamp(
+            self.y_mm + dy_mm, ARENA_WALL_EPS_MM, self.arena_height_mm - ARENA_WALL_EPS_MM
+        )
         self.z_mm = max(0.0, self.z_mm + dz_mm)
 
     # ── Sensor emulation ────────────────────────────────────────────────
@@ -423,14 +434,18 @@ class SITLRobot:
         return self._rng.randint(-magnitude, magnitude) if magnitude > 0 else 0
 
     def _accel_mg(self) -> tuple[int, int, int]:
-        return (self._noise(ACCEL_NOISE_MG),
-                self._noise(ACCEL_NOISE_MG),
-                GRAVITY_MG_Z + self._noise(ACCEL_NOISE_MG))
+        return (
+            self._noise(ACCEL_NOISE_MG),
+            self._noise(ACCEL_NOISE_MG),
+            GRAVITY_MG_Z + self._noise(ACCEL_NOISE_MG),
+        )
 
     def _gyro_mdps(self) -> tuple[int, int, int]:
-        return (self._noise(GYRO_NOISE_MDPS),
-                self._noise(GYRO_NOISE_MDPS),
-                int(self.yaw_rate_dps * 1000) + self._noise(GYRO_NOISE_MDPS))
+        return (
+            self._noise(GYRO_NOISE_MDPS),
+            self._noise(GYRO_NOISE_MDPS),
+            int(self.yaw_rate_dps * 1000) + self._noise(GYRO_NOISE_MDPS),
+        )
 
     def _gps_latlon(self) -> tuple[int, int, int]:
         """Integrate position deltas as GPS lat/lon using equirectangular."""
@@ -464,19 +479,27 @@ class SITLRobot:
             )
             sonar = min(SONAR_MAX_MM, int(self.z_mm))
             return SensorPacketDrone(
-                timestamp_ms=ts, battery_mv=batt,
-                accel_mg=accel, gyro_mdps=gyro,
-                baro_pa=baro_pa, mag_ut=mag,
-                gps_lat_deg7=lat, gps_lon_deg7=lon, gps_alt_cm=alt_cm,
+                timestamp_ms=ts,
+                battery_mv=batt,
+                accel_mg=accel,
+                gyro_mdps=gyro,
+                baro_pa=baro_pa,
+                mag_ut=mag,
+                gps_lat_deg7=lat,
+                gps_lon_deg7=lon,
+                gps_alt_cm=alt_cm,
                 sonar_down_mm=sonar,
             )
 
         if self.robot_type == ROBOT_HUMANOID:
             return SensorPacketHumanoid(
-                timestamp_ms=ts, battery_mv=batt,
-                accel_mg=accel, gyro_mdps=gyro,
+                timestamp_ms=ts,
+                battery_mv=batt,
+                accel_mg=accel,
+                gyro_mdps=gyro,
                 joint_angles=list(self.humanoid_joints_cdeg),
-                foot_pressure_l=0, foot_pressure_r=0,
+                foot_pressure_l=0,
+                foot_pressure_r=0,
             )
 
         # Wheeled / ackermann both use SensorPacket (same wheeled layout)
@@ -486,11 +509,14 @@ class SITLRobot:
         range_front = int(max(0.0, self.arena_width_mm - self.x_mm))
         range_right = int(max(0.0, self.arena_height_mm - self.y_mm))
         return SensorPacket(
-            timestamp_ms=ts, battery_mv=batt,
-            accel_mg=accel, gyro_mdps=gyro,
+            timestamp_ms=ts,
+            battery_mv=batt,
+            accel_mg=accel,
+            gyro_mdps=gyro,
             odom_dist_mm=self.odom_dist_mm,
             odom_hdg_cdeg=self.odom_hdg_cdeg,
-            encoder_l=enc_l, encoder_r=enc_r,
+            encoder_l=enc_l,
+            encoder_r=enc_r,
             range_front_mm=range_front,
             range_right_mm=range_right,
         )
@@ -501,8 +527,11 @@ class SITLRobot:
     def status_packet(self, mode: int = 1, tasks_ok: int = 8) -> StatusPacket:
         uptime = int(time.monotonic() - self._t_start)
         return StatusPacket(
-            mode=mode, tasks_ok=tasks_ok, canary_ok=tasks_ok,
-            uptime_s=uptime, robot_type=self.robot_type,
+            mode=mode,
+            tasks_ok=tasks_ok,
+            canary_ok=tasks_ok,
+            uptime_s=uptime,
+            robot_type=self.robot_type,
         )
 
     def camera_payload(self, seed: int = 0) -> bytes:
@@ -530,27 +559,45 @@ def _scen_forward_10m(robot: SITLRobot) -> list[ScenarioEvent]:
     if robot.robot_type == ROBOT_DRONE:
         # Forward flight at constant low pitch
         return [
-            (0.0, ActuatorCmd.drone(DRONE_HOVER_PWM, DRONE_PWM_NEUTRAL,
-                                    DRONE_PWM_NEUTRAL + 100, DRONE_PWM_NEUTRAL)),
-            (SCEN_LONG_S, ActuatorCmd.drone(DRONE_HOVER_PWM, DRONE_PWM_NEUTRAL,
-                                             DRONE_PWM_NEUTRAL, DRONE_PWM_NEUTRAL)),
+            (
+                0.0,
+                ActuatorCmd.drone(
+                    DRONE_HOVER_PWM, DRONE_PWM_NEUTRAL, DRONE_PWM_NEUTRAL + 100, DRONE_PWM_NEUTRAL
+                ),
+            ),
+            (
+                SCEN_LONG_S,
+                ActuatorCmd.drone(
+                    DRONE_HOVER_PWM, DRONE_PWM_NEUTRAL, DRONE_PWM_NEUTRAL, DRONE_PWM_NEUTRAL
+                ),
+            ),
         ]
     if robot.robot_type == ROBOT_ACKERMANN:
-        return [(0.0, ActuatorCmd(actuator_type=ACT_ACKERMANN, channels=[100, 0])),
-                (SCEN_MEDIUM_S, ActuatorCmd.stop(ACT_ACKERMANN))]
+        return [
+            (0.0, ActuatorCmd(actuator_type=ACT_ACKERMANN, channels=[100, 0])),
+            (SCEN_MEDIUM_S, ActuatorCmd.stop(ACT_ACKERMANN)),
+        ]
     # wheeled default
-    return [(0.0, ActuatorCmd.wheeled(100, 100)),
-            (SCEN_MEDIUM_S, ActuatorCmd.wheeled(0, 0))]
+    return [(0.0, ActuatorCmd.wheeled(100, 100)), (SCEN_MEDIUM_S, ActuatorCmd.wheeled(0, 0))]
 
 
 def _scen_spin_in_place(robot: SITLRobot) -> list[ScenarioEvent]:
     if robot.robot_type == ROBOT_DRONE:
-        return [(0.0, ActuatorCmd.drone(DRONE_HOVER_PWM, DRONE_PWM_NEUTRAL,
-                                         DRONE_PWM_NEUTRAL, DRONE_PWM_NEUTRAL + 200)),
-                (SCEN_SHORT_S, ActuatorCmd.drone(DRONE_HOVER_PWM, DRONE_PWM_NEUTRAL,
-                                                  DRONE_PWM_NEUTRAL, DRONE_PWM_NEUTRAL))]
-    return [(0.0, ActuatorCmd.wheeled(60, -60)),
-            (SCEN_SHORT_S, ActuatorCmd.wheeled(0, 0))]
+        return [
+            (
+                0.0,
+                ActuatorCmd.drone(
+                    DRONE_HOVER_PWM, DRONE_PWM_NEUTRAL, DRONE_PWM_NEUTRAL, DRONE_PWM_NEUTRAL + 200
+                ),
+            ),
+            (
+                SCEN_SHORT_S,
+                ActuatorCmd.drone(
+                    DRONE_HOVER_PWM, DRONE_PWM_NEUTRAL, DRONE_PWM_NEUTRAL, DRONE_PWM_NEUTRAL
+                ),
+            ),
+        ]
+    return [(0.0, ActuatorCmd.wheeled(60, -60)), (SCEN_SHORT_S, ActuatorCmd.wheeled(0, 0))]
 
 
 def _scen_takeoff_hover_land(robot: SITLRobot) -> list[ScenarioEvent]:
@@ -558,12 +605,24 @@ def _scen_takeoff_hover_land(robot: SITLRobot) -> list[ScenarioEvent]:
     if robot.robot_type != ROBOT_DRONE:
         return _scen_idle(robot)
     return [
-        (0.0, ActuatorCmd.drone(DRONE_PWM_NEUTRAL + 200, DRONE_PWM_NEUTRAL,
-                                DRONE_PWM_NEUTRAL, DRONE_PWM_NEUTRAL)),   # climb
-        (SCEN_SHORT_S, ActuatorCmd.drone(DRONE_HOVER_PWM, DRONE_PWM_NEUTRAL,
-                                          DRONE_PWM_NEUTRAL, DRONE_PWM_NEUTRAL)),   # hover
-        (SCEN_MEDIUM_S, ActuatorCmd.drone(DRONE_HOVER_PWM - 100, DRONE_PWM_NEUTRAL,
-                                           DRONE_PWM_NEUTRAL, DRONE_PWM_NEUTRAL)),   # descend
+        (
+            0.0,
+            ActuatorCmd.drone(
+                DRONE_PWM_NEUTRAL + 200, DRONE_PWM_NEUTRAL, DRONE_PWM_NEUTRAL, DRONE_PWM_NEUTRAL
+            ),
+        ),  # climb
+        (
+            SCEN_SHORT_S,
+            ActuatorCmd.drone(
+                DRONE_HOVER_PWM, DRONE_PWM_NEUTRAL, DRONE_PWM_NEUTRAL, DRONE_PWM_NEUTRAL
+            ),
+        ),  # hover
+        (
+            SCEN_MEDIUM_S,
+            ActuatorCmd.drone(
+                DRONE_HOVER_PWM - 100, DRONE_PWM_NEUTRAL, DRONE_PWM_NEUTRAL, DRONE_PWM_NEUTRAL
+            ),
+        ),  # descend
     ]
 
 
@@ -575,11 +634,11 @@ def _scen_emergency_stop(_: SITLRobot) -> list[ScenarioEvent]:
 
 
 SCENARIOS: dict[str, ScenarioFn] = {
-    "idle":                 _scen_idle,
-    "forward_10m":          _scen_forward_10m,
-    "spin_in_place":        _scen_spin_in_place,
-    "takeoff_hover_land":   _scen_takeoff_hover_land,
-    "emergency_stop":       _scen_emergency_stop,
+    "idle": _scen_idle,
+    "forward_10m": _scen_forward_10m,
+    "spin_in_place": _scen_spin_in_place,
+    "takeoff_hover_land": _scen_takeoff_hover_land,
+    "emergency_stop": _scen_emergency_stop,
 }
 
 
@@ -616,6 +675,7 @@ def run_scenario(
 
 
 # ── Network client ───────────────────────────────────────────────────────────
+
 
 class SITLNetClient:
     """Connects a SITLRobot to a brain TCP server.
@@ -721,9 +781,9 @@ class SITLNetClient:
 # ── CLI ──────────────────────────────────────────────────────────────────────
 
 _TYPE_STR_TO_INT = {
-    "wheeled":   ROBOT_WHEELED,
-    "drone":     ROBOT_DRONE,
-    "humanoid":  ROBOT_HUMANOID,
+    "wheeled": ROBOT_WHEELED,
+    "drone": ROBOT_DRONE,
+    "humanoid": ROBOT_HUMANOID,
     "ackermann": ROBOT_ACKERMANN,
 }
 
@@ -733,11 +793,13 @@ def main(argv: Optional[list[str]] = None) -> int:
     ap.add_argument("--type", choices=list(_TYPE_STR_TO_INT.keys()), default="wheeled")
     ap.add_argument("--host", default=DEFAULT_BRAIN_HOST)
     ap.add_argument("--port", type=int, default=DEFAULT_BRAIN_PORT)
-    ap.add_argument("--scenario", default="",
-                    help=f"run a pre-defined scenario offline (no network). "
-                         f"Known: {', '.join(list_scenarios())}")
-    ap.add_argument("--duration", type=float, default=0.0,
-                    help="seconds to run (0 = forever)")
+    ap.add_argument(
+        "--scenario",
+        default="",
+        help=f"run a pre-defined scenario offline (no network). "
+        f"Known: {', '.join(list_scenarios())}",
+    )
+    ap.add_argument("--duration", type=float, default=0.0, help="seconds to run (0 = forever)")
     ap.add_argument("--sensor-hz", type=float, default=DEFAULT_SENSOR_HZ)
     ap.add_argument("--camera-hz", type=float, default=DEFAULT_CAMERA_HZ)
     args = ap.parse_args(argv)
@@ -745,15 +807,18 @@ def main(argv: Optional[list[str]] = None) -> int:
     robot = SITLRobot(robot_type=_TYPE_STR_TO_INT[args.type])
 
     if args.scenario:
-        run_scenario(robot, args.scenario,
-                     duration_s=args.duration or SCEN_LONG_S)
+        run_scenario(robot, args.scenario, duration_s=args.duration or SCEN_LONG_S)
         print(f"[SITL] Scenario '{args.scenario}' done. Pose: {robot.pose()}")
         return 0
 
-    client = SITLNetClient(robot, args.host, args.port,
-                            sensor_hz=args.sensor_hz,
-                            camera_hz=args.camera_hz,
-                            duration_s=args.duration)
+    client = SITLNetClient(
+        robot,
+        args.host,
+        args.port,
+        sensor_hz=args.sensor_hz,
+        camera_hz=args.camera_hz,
+        duration_s=args.duration,
+    )
     try:
         asyncio.run(client.run())
     except KeyboardInterrupt:

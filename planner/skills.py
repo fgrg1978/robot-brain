@@ -253,8 +253,8 @@ HUMANOID_SKILLS: dict[str, dict] = {
 # ── Robot type -> skill set ───────────────────────────────────────────────────
 
 ROBOT_SKILLS: dict[str, dict] = {
-    "wheeled":  {**UNIVERSAL_SKILLS, **WHEELED_SKILLS},
-    "drone":    {**UNIVERSAL_SKILLS, **DRONE_SKILLS},
+    "wheeled": {**UNIVERSAL_SKILLS, **WHEELED_SKILLS},
+    "drone": {**UNIVERSAL_SKILLS, **DRONE_SKILLS},
     "humanoid": {**UNIVERSAL_SKILLS, **HUMANOID_SKILLS},
     "ackermann": {**UNIVERSAL_SKILLS, **WHEELED_SKILLS},  # same shape as wheeled
 }
@@ -270,8 +270,8 @@ def skill_list_prompt(robot_type: str) -> str:
     skills = get_skills(robot_type)
     lines = []
     for name, info in skills.items():
-        args = ", ".join(
-            f"<{a}: {t}>" for a, (t, _) in info["args"].items()
-        ) if info["args"] else ""
+        args = (
+            ", ".join(f"<{a}: {t}>" for a, (t, _) in info["args"].items()) if info["args"] else ""
+        )
         lines.append(f"- {name} {args}  # {info['description']}")
     return "\n".join(lines)

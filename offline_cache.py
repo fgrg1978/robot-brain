@@ -88,21 +88,21 @@ OFFLINE_CACHE_KEY_HEX_LEN: int = 32  # 128-bit prefix of SHA-256
 FALLBACK_RESPONSES: dict[str, dict[str, str]] = {
     # kind -> classification -> canned response
     "llm": {
-        "unknown":   "INVESTIGATE forward",
-        "clear":     "FORWARD 30",
-        "obstacle":  "STOP",
+        "unknown": "INVESTIGATE forward",
+        "clear": "FORWARD 30",
+        "obstacle": "STOP",
         "low_power": "STOP",
-        "default":   "STOP",
+        "default": "STOP",
     },
     "vlm": {
-        "unknown":   "Scene unclear. Possible obstacles ahead. Proceed with caution.",
-        "clear":     "Path appears clear. No obvious obstacles detected.",
-        "obstacle":  "Obstacle detected ahead. Stop and re-evaluate.",
-        "default":   "Scene unavailable (model offline). Assume obstacles present.",
+        "unknown": "Scene unclear. Possible obstacles ahead. Proceed with caution.",
+        "clear": "Path appears clear. No obvious obstacles detected.",
+        "obstacle": "Obstacle detected ahead. Stop and re-evaluate.",
+        "default": "Scene unavailable (model offline). Assume obstacles present.",
     },
     "task": {
-        "unknown":   '[{"skill": "STOP", "args": {}}]',
-        "default":   '[{"skill": "STOP", "args": {}}]',
+        "unknown": '[{"skill": "STOP", "args": {}}]',
+        "default": '[{"skill": "STOP", "args": {}}]',
     },
 }
 
@@ -117,11 +117,13 @@ HIT_RATE_MIN_DENOM: int = 1
 # Entry
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class CacheEntry:
     """One cached response."""
+
     key: str
-    kind: str           # "vlm" | "llm" | "task" | ...
+    kind: str  # "vlm" | "llm" | "task" | ...
     response: str
     created_at: float
     last_used: float
@@ -136,9 +138,11 @@ class CacheEntry:
 # Stats
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class CacheStats:
     """Runtime cache statistics."""
+
     hits: int = 0
     misses: int = 0
     evictions: int = 0
@@ -161,6 +165,7 @@ class CacheStats:
 # ---------------------------------------------------------------------------
 # ModelCache
 # ---------------------------------------------------------------------------
+
 
 class ModelCache:
     """LRU + TTL cache for VLM/LLM responses, with local fallbacks.
@@ -226,8 +231,7 @@ class ModelCache:
         hasher.update(prompt.encode("utf-8"))
         if image_bytes is not None:
             hasher.update(b"\x00")
-            hasher.update(hashlib.new(
-                OFFLINE_CACHE_HASH_ALGO, image_bytes).digest())
+            hasher.update(hashlib.new(OFFLINE_CACHE_HASH_ALGO, image_bytes).digest())
         if extra is not None:
             hasher.update(b"\x00")
             hasher.update(extra.encode("utf-8"))
@@ -377,6 +381,7 @@ class ModelCache:
                         # Non-serialisable — skip caching, return as-is.
                         return result
                 return result
+
             return wrapper
 
         return decorator
@@ -465,7 +470,9 @@ class ModelCache:
         if version != OFFLINE_CACHE_SCHEMA_VERSION:
             logger.warning(
                 "Cache schema mismatch (have=%s, want=%s). Ignoring on-disk cache.",
-                version, OFFLINE_CACHE_SCHEMA_VERSION)
+                version,
+                OFFLINE_CACHE_SCHEMA_VERSION,
+            )
             return
 
         entries_raw = data.get("entries", [])
@@ -495,9 +502,7 @@ class ModelCache:
                 self._entries[entry.key] = entry
                 loaded += 1
             self._evict_if_needed()
-        logger.info(
-            "Loaded %d cache entries from %s (%d skipped)",
-            loaded, self._path, skipped)
+        logger.info("Loaded %d cache entries from %s (%d skipped)", loaded, self._path, skipped)
 
     def save(self, path: Optional[str] = None) -> None:
         """Flush the cache to disk as JSON."""
@@ -516,8 +521,7 @@ class ModelCache:
         with open(tmp, "w", encoding="utf-8") as f:
             json.dump(payload, f, ensure_ascii=False)
         os.replace(tmp, target)
-        logger.info("Saved %d cache entries to %s",
-                    len(payload["entries"]), target)
+        logger.info("Saved %d cache entries to %s", len(payload["entries"]), target)
 
     def close(self) -> None:
         """Persist and release the cache."""

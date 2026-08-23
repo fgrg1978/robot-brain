@@ -18,9 +18,9 @@ from perception.surround_view import (
 def synthetic_images():
     """Generate 4 synthetic camera images (solid colors for position ID)."""
     return {
-        "front": np.full((480, 640, 3), (255, 0, 0), dtype=np.uint8),    # blue
-        "rear":  np.full((480, 640, 3), (0, 255, 0), dtype=np.uint8),    # green
-        "left":  np.full((480, 640, 3), (0, 0, 255), dtype=np.uint8),    # red
+        "front": np.full((480, 640, 3), (255, 0, 0), dtype=np.uint8),  # blue
+        "rear": np.full((480, 640, 3), (0, 255, 0), dtype=np.uint8),  # green
+        "left": np.full((480, 640, 3), (0, 0, 255), dtype=np.uint8),  # red
         "right": np.full((480, 640, 3), (255, 255, 0), dtype=np.uint8),  # cyan
     }
 
@@ -67,7 +67,7 @@ class TestSurroundViewGenerate:
     def test_two_cameras(self, surround):
         images = {
             "front": np.zeros((480, 640, 3), dtype=np.uint8),
-            "rear":  np.full((480, 640, 3), 128, dtype=np.uint8),
+            "rear": np.full((480, 640, 3), 128, dtype=np.uint8),
         }
         result = surround.generate(images)
         assert result is not None
@@ -87,7 +87,7 @@ class TestSurroundViewGenerate:
         """Images of varying sizes should be resized internally."""
         images = {
             "front": np.zeros((240, 320, 3), dtype=np.uint8),
-            "rear":  np.zeros((1080, 1920, 3), dtype=np.uint8),
+            "rear": np.zeros((1080, 1920, 3), dtype=np.uint8),
         }
         result = surround.generate(images)
         assert result is not None
@@ -135,10 +135,10 @@ class TestBlending:
         # Each camera's region (outside the central robot-icon zone) must
         # have coverage from at least one mask.
         samples = {
-            "front": total[150, 400],   # top-middle → front camera
-            "rear":  total[650, 400],   # bottom-middle → rear camera
-            "left":  total[400, 150],   # left-middle → left camera
-            "right": total[400, 650],   # right-middle → right camera
+            "front": total[150, 400],  # top-middle → front camera
+            "rear": total[650, 400],  # bottom-middle → rear camera
+            "left": total[400, 150],  # left-middle → left camera
+            "right": total[400, 650],  # right-middle → right camera
         }
         for name, val in samples.items():
             assert val > 0, f"{name} quadrant has no camera coverage (val={val})"

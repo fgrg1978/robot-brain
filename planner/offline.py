@@ -46,6 +46,7 @@ RECONNECT_INTERVAL_S = 10.0
 # Types
 # ---------------------------------------------------------------------------
 
+
 class OfflineState:
     ONLINE = "online"
     DEGRADED = "degraded"
@@ -56,6 +57,7 @@ class OfflineState:
 @dataclass
 class FallbackWaypoint:
     """A waypoint for the kernel's offline patrol."""
+
     lat: float = 0.0
     lon: float = 0.0
     action: str = "patrol"  # patrol, stop, dock
@@ -64,6 +66,7 @@ class FallbackWaypoint:
 @dataclass
 class OfflineStatus:
     """Current offline autonomy status."""
+
     state: str = OfflineState.ONLINE
     last_sensor_time: float = 0.0
     timeout_count: int = 0
@@ -77,6 +80,7 @@ class OfflineStatus:
 # OfflineManager
 # ---------------------------------------------------------------------------
 
+
 class OfflineManager:
     """Manages transitions between online/offline states."""
 
@@ -84,10 +88,8 @@ class OfflineManager:
         self._status = OfflineStatus()
         cfg = config or {}
         self._offline_timeout = cfg.get("offline_timeout_s", OFFLINE_TIMEOUT_S)
-        self._degraded_threshold = cfg.get("degraded_threshold",
-                                           DEGRADED_THRESHOLD_TIMEOUTS)
-        self._dock_battery_pct = cfg.get("dock_battery_pct",
-                                         DOCK_BATTERY_THRESHOLD_PCT)
+        self._degraded_threshold = cfg.get("degraded_threshold", DEGRADED_THRESHOLD_TIMEOUTS)
+        self._dock_battery_pct = cfg.get("dock_battery_pct", DOCK_BATTERY_THRESHOLD_PCT)
         self._fallback_waypoints: list[FallbackWaypoint] = []
 
     @property
@@ -106,8 +108,7 @@ class OfflineManager:
         """Pre-load fallback waypoints for offline patrol."""
         self._fallback_waypoints = waypoints[:MAX_FALLBACK_WAYPOINTS]
         self._status.fallback_waypoints = [
-            {"lat": w.lat, "lon": w.lon, "action": w.action}
-            for w in self._fallback_waypoints
+            {"lat": w.lat, "lon": w.lon, "action": w.action} for w in self._fallback_waypoints
         ]
         logger.info("Loaded %d fallback waypoints", len(self._fallback_waypoints))
 
@@ -120,12 +121,14 @@ class OfflineManager:
 
         prev_state = self._status.state
 
-        if self._status.state in (OfflineState.OFFLINE, OfflineState.DEGRADED,
-                                   OfflineState.DOCKING):
+        if self._status.state in (
+            OfflineState.OFFLINE,
+            OfflineState.DEGRADED,
+            OfflineState.DOCKING,
+        ):
             self._status.state = OfflineState.ONLINE
             self._status.time_offline_s = now - self._status.offline_start
-            logger.info("Robot reconnected after %.1fs offline",
-                        self._status.time_offline_s)
+            logger.info("Robot reconnected after %.1fs offline", self._status.time_offline_s)
 
         if prev_state != self._status.state:
             logger.info("State: %s → %s", prev_state, self._status.state)
@@ -138,8 +141,7 @@ class OfflineManager:
         if self._status.state == OfflineState.ONLINE:
             if self._status.timeout_count >= self._degraded_threshold:
                 self._status.state = OfflineState.DEGRADED
-                logger.warning("Connection degraded (%d timeouts)",
-                               self._status.timeout_count)
+                logger.warning("Connection degraded (%d timeouts)", self._status.timeout_count)
 
         if prev_state != self._status.state:
             logger.info("State: %s → %s", prev_state, self._status.state)
@@ -158,8 +160,11 @@ class OfflineManager:
         if self._status.state == OfflineState.OFFLINE:
             if self._status.battery_pct < self._dock_battery_pct:
                 self._status.state = OfflineState.DOCKING
-                logger.warning("Battery %d%% < %d%% — DOCKING mode",
-                               self._status.battery_pct, self._dock_battery_pct)
+                logger.warning(
+                    "Battery %d%% < %d%% — DOCKING mode",
+                    self._status.battery_pct,
+                    self._dock_battery_pct,
+                )
 
         return self._status.state
 
@@ -172,8 +177,11 @@ class OfflineManager:
         s = self._status
         lines = [
             f"State: {s.state}",
-            f"Last sensor: {time.time() - s.last_sensor_time:.1f}s ago"
-            if s.last_sensor_time > 0 else "Last sensor: never",
+            (
+                f"Last sensor: {time.time() - s.last_sensor_time:.1f}s ago"
+                if s.last_sensor_time > 0
+                else "Last sensor: never"
+            ),
             f"Timeouts: {s.timeout_count}",
             f"Battery: {s.battery_pct}%",
             f"Fallback waypoints: {len(s.fallback_waypoints)}",

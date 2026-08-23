@@ -22,7 +22,6 @@ import time
 import urllib.error
 import urllib.request
 
-
 # ── Constants ────────────────────────────────────────────────────────────────
 
 DEFAULT_HOST = "127.0.0.1"
@@ -37,6 +36,7 @@ STATUS_KEY_WIDTH = 20
 
 
 # ── HTTP helpers (stdlib only) ───────────────────────────────────────────────
+
 
 def _api_url(host: str, port: int, path: str) -> str:
     """Build a full API URL."""
@@ -66,13 +66,14 @@ def _api_get(host: str, port: int, path: str) -> dict | str:
         return {"error": str(e)}
 
 
-def _api_post(host: str, port: int, path: str,
-              data: dict | None = None) -> dict | str:
+def _api_post(host: str, port: int, path: str, data: dict | None = None) -> dict | str:
     """Perform a POST request with JSON body."""
     url = _api_url(host, port, path)
     payload = json.dumps(data or {}).encode()
     req = urllib.request.Request(
-        url, data=payload, method="POST",
+        url,
+        data=payload,
+        method="POST",
         headers={"Content-Type": API_CONTENT_TYPE},
     )
     try:
@@ -103,6 +104,7 @@ def _print_json(data: dict | str | list) -> None:
 
 
 # ── Subcommands ──────────────────────────────────────────────────────────────
+
 
 def cmd_ping(args: argparse.Namespace) -> int:
     """Check connectivity to the brain server."""
@@ -164,9 +166,7 @@ def cmd_config_get(args: argparse.Namespace) -> int:
 
 def cmd_config_set(args: argparse.Namespace) -> int:
     """Set a configuration value."""
-    result = _api_post(args.host, args.port,
-                       f"/api/config/{args.key}",
-                       {"value": args.value})
+    result = _api_post(args.host, args.port, f"/api/config/{args.key}", {"value": args.value})
     _print_json(result)
     return 0
 
@@ -183,9 +183,11 @@ def cmd_describe(args: argparse.Namespace) -> int:
     desc = RobotDescription.from_yaml(path)
     print(f"Robot: {desc.name}")
     print(f"Type:  {desc.type}")
-    print(f"Chassis: wheel_base={desc.chassis.wheel_base_mm}mm, "
-          f"wheel_diam={desc.chassis.wheel_diameter_mm}mm, "
-          f"max_speed={desc.chassis.max_speed_pct}%")
+    print(
+        f"Chassis: wheel_base={desc.chassis.wheel_base_mm}mm, "
+        f"wheel_diam={desc.chassis.wheel_diameter_mm}mm, "
+        f"max_speed={desc.chassis.max_speed_pct}%"
+    )
     print(f"Sensors ({len(desc.sensors)}):")
     for s in desc.sensors:
         parts = [f"  - {s.type}"]
@@ -217,6 +219,7 @@ def cmd_monitor(args: argparse.Namespace) -> int:
     baud = args.baud
     try:
         import serial  # type: ignore[import-untyped]
+
         ser = serial.Serial(port_path, baud, timeout=1)
         print(f"Monitoring {port_path} at {baud} baud (Ctrl+C to stop)...")
         try:
@@ -244,16 +247,22 @@ def cmd_flash(args: argparse.Namespace) -> int:
 
 # ── Argument parser ──────────────────────────────────────────────────────────
 
+
 def build_parser() -> argparse.ArgumentParser:
     """Build the CLI argument parser with all subcommands."""
     parser = argparse.ArgumentParser(
         prog="robot-cli",
         description="Robot OS CLI — manage and inspect the robot brain.",
     )
-    parser.add_argument("--host", default=DEFAULT_HOST,
-                        help=f"Brain server host (default: {DEFAULT_HOST})")
-    parser.add_argument("--port", type=int, default=DEFAULT_PORT,
-                        help=f"Brain server port (default: {DEFAULT_PORT})")
+    parser.add_argument(
+        "--host", default=DEFAULT_HOST, help=f"Brain server host (default: {DEFAULT_HOST})"
+    )
+    parser.add_argument(
+        "--port",
+        type=int,
+        default=DEFAULT_PORT,
+        help=f"Brain server port (default: {DEFAULT_PORT})",
+    )
 
     sub = parser.add_subparsers(dest="command", help="Available commands")
 
@@ -280,21 +289,21 @@ def build_parser() -> argparse.ArgumentParser:
     set_parser.add_argument("value", help="New value")
 
     # ── describe ──────────────────────────────────────────────────────────
-    desc_parser = sub.add_parser("describe",
-                                 help="Show robot description from YAML")
-    desc_parser.add_argument("--file", default="",
-                             help="Path to robot.yaml (default: robot.yaml)")
+    desc_parser = sub.add_parser("describe", help="Show robot description from YAML")
+    desc_parser.add_argument("--file", default="", help="Path to robot.yaml (default: robot.yaml)")
 
     # ── monitor ───────────────────────────────────────────────────────────
     mon_parser = sub.add_parser("monitor", help="Serial console monitor")
-    mon_parser.add_argument("port_path", nargs="?", default="/dev/ttyUSB0",
-                            help="Serial port path")
-    mon_parser.add_argument("--baud", type=int, default=SERIAL_DEFAULT_BAUD,
-                            help=f"Baud rate (default: {SERIAL_DEFAULT_BAUD})")
+    mon_parser.add_argument("port_path", nargs="?", default="/dev/ttyUSB0", help="Serial port path")
+    mon_parser.add_argument(
+        "--baud",
+        type=int,
+        default=SERIAL_DEFAULT_BAUD,
+        help=f"Baud rate (default: {SERIAL_DEFAULT_BAUD})",
+    )
 
     # ── flash ─────────────────────────────────────────────────────────────
-    flash_parser = sub.add_parser("flash",
-                                  help="Flash firmware (placeholder)")
+    flash_parser = sub.add_parser("flash", help="Flash firmware (placeholder)")
     flash_parser.add_argument("firmware", help="Firmware ELF file path")
 
     return parser
@@ -310,11 +319,11 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     dispatch = {
-        "ping":     cmd_ping,
-        "status":   cmd_status,
+        "ping": cmd_ping,
+        "status": cmd_status,
         "describe": cmd_describe,
-        "monitor":  cmd_monitor,
-        "flash":    cmd_flash,
+        "monitor": cmd_monitor,
+        "flash": cmd_flash,
     }
 
     if args.command == "topic":

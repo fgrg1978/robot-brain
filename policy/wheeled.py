@@ -19,7 +19,19 @@ class WheeledPolicy:
     def __init__(self, max_speed: int = 80):
         self.max_speed = max_speed
 
-    def translate(self, skill: str, args: dict | None = None, sensors: dict | None = None) -> ActuatorCmd:
+    @staticmethod
+    def _clamp(value: int, lo: int, hi: int) -> int:
+        """Clamp `value` to the inclusive [lo, hi] range.
+
+        Applied to every wheel/PWM channel before it reaches ActuatorCmd —
+        the LLM/plan-supplied speed/degrees args are untrusted input and
+        must never be able to exceed the hardware's safe motor envelope.
+        """
+        return max(lo, min(hi, value))
+
+    def translate(
+        self, skill: str, args: dict | None = None, sensors: dict | None = None
+    ) -> ActuatorCmd:
         """Translate a skill name into an ActuatorCmd.
 
         Args:
@@ -40,29 +52,29 @@ class WheeledPolicy:
             return ActuatorCmd.wheeled(0, 0)
 
         if s == "FORWARD":
-            speed = min(int(args.get("speed", 60)), self.max_speed)
+            speed = self._clamp(int(args.get("speed", 60)), -self.max_speed, self.max_speed)
             return ActuatorCmd.wheeled(speed, speed)
 
         if s in ("BACKWARD", "REVERSE"):
-            speed = min(int(args.get("speed", 30)), self.max_speed)
-            return ActuatorCmd.wheeled(-speed, -speed)
+            speed = self._clamp(-int(args.get("speed", 30)), -self.max_speed, self.max_speed)
+            return ActuatorCmd.wheeled(speed, speed)
 
         if s == "TURN_RIGHT":
             degrees = int(args.get("degrees", 45))
-            intensity = min(degrees * self.max_speed // 90, self.max_speed)
+            intensity = self._clamp(degrees * self.max_speed // 90, -self.max_speed, self.max_speed)
             return ActuatorCmd.wheeled(intensity, -intensity)
 
         if s == "TURN_LEFT":
             degrees = int(args.get("degrees", 45))
-            intensity = min(degrees * self.max_speed // 90, self.max_speed)
+            intensity = self._clamp(degrees * self.max_speed // 90, -self.max_speed, self.max_speed)
             return ActuatorCmd.wheeled(-intensity, intensity)
 
         if s == "INVESTIGATE":
-            speed = int(args.get("speed", 20))
+            speed = self._clamp(int(args.get("speed", 20)), -self.max_speed, self.max_speed)
             return ActuatorCmd.wheeled(speed, speed)
 
         if s == "TRACK":
-            speed = int(args.get("speed", 30))
+            speed = self._clamp(int(args.get("speed", 30)), -self.max_speed, self.max_speed)
             return ActuatorCmd.wheeled(speed, speed)
 
         if s == "ALERT":
@@ -70,31 +82,31 @@ class WheeledPolicy:
 
         if s == "SCAN_360":
             # Rotate in place at low speed — caller manages timing per step
-            speed = int(args.get("speed", 25))
+            speed = self._clamp(int(args.get("speed", 25)), -self.max_speed, self.max_speed)
             return ActuatorCmd.wheeled(speed, -speed)
 
         if s == "FOLLOW_WALL":
             # Slow forward — caller keeps wall at distance via sensor feedback
-            speed = int(args.get("speed", 30))
+            speed = self._clamp(int(args.get("speed", 30)), -self.max_speed, self.max_speed)
             return ActuatorCmd.wheeled(speed, speed)
 
         if s in ("MAP_PERIMETER", "PATROL_PERIMETER", "EXPLORE_FRONTIER"):
             # Navigation skills — default slow forward, actual steering
             # is handled by the mapper/path planner sending TURN/FORWARD
-            speed = int(args.get("speed", 30))
+            speed = self._clamp(int(args.get("speed", 30)), -self.max_speed, self.max_speed)
             return ActuatorCmd.wheeled(speed, speed)
 
         if s == "NAVIGATE_PATH":
             # Follow planned path — steering based on heading error
             speed = int(args.get("speed", 40))
             steer = int(args.get("steer", 0))  # -100..+100
-            left = min(speed + steer, self.max_speed)
-            right = min(speed - steer, self.max_speed)
+            left = self._clamp(speed + steer, -self.max_speed, self.max_speed)
+            right = self._clamp(speed - steer, -self.max_speed, self.max_speed)
             return ActuatorCmd.wheeled(left, right)
 
         if s == "DETERRENT":
             # Slow advance toward intruder during deterrent
-            speed = int(args.get("speed", 15))
+            speed = self._clamp(int(args.get("speed", 15)), -self.max_speed, self.max_speed)
             return ActuatorCmd.wheeled(speed, speed)
 
         if s in ("AIM_AT", "STAND_DOWN"):
@@ -103,17 +115,17 @@ class WheeledPolicy:
 
         if s == "INVESTIGATE_ZONE":
             # Navigate toward zone — default moderate speed
-            speed = int(args.get("speed", 40))
+            speed = self._clamp(int(args.get("speed", 40)), -self.max_speed, self.max_speed)
             return ActuatorCmd.wheeled(speed, speed)
 
         if s == "RETURN_TO_DOCK":
             # Slow approach toward dock
-            speed = int(args.get("speed", 20))
+            speed = self._clamp(int(args.get("speed", 20)), -self.max_speed, self.max_speed)
             return ActuatorCmd.wheeled(speed, speed)
 
         if s == "UNDOCK":
             # Drive forward off dock
-            speed = int(args.get("speed", 30))
+            speed = self._clamp(int(args.get("speed", 30)), -self.max_speed, self.max_speed)
             return ActuatorCmd.wheeled(speed, speed)
 
         # Unknown skill — safe default

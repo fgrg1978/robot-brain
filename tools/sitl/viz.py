@@ -22,18 +22,20 @@ import time
 
 try:
     import matplotlib
+
     matplotlib.use("TkAgg")  # works headless-free on macOS
     import matplotlib.pyplot as plt
     import matplotlib.patches as patches
     from matplotlib.patches import FancyArrow
+
     _MPL = True
 except ImportError:
     _MPL = False
 
 import yaml
 
-
 # ── Visualizer ────────────────────────────────────────────────────────────────
+
 
 class SITLViz:
     """Real-time top-down 2D visualizer for the wheeled SITL."""
@@ -42,11 +44,11 @@ class SITLViz:
         if not _MPL:
             raise ImportError("matplotlib is required: pip install matplotlib")
 
-        self.scenario   = scenario
-        self.interval   = 1.0 / update_hz
+        self.scenario = scenario
+        self.interval = 1.0 / update_hz
         self._last_draw = 0.0
 
-        width  = scenario.get("width_mm", 10000)
+        width = scenario.get("width_mm", 10000)
         height = scenario.get("height_mm", 10000)
 
         self.fig, self.ax = plt.subplots(figsize=(10, 8))
@@ -61,17 +63,27 @@ class SITLViz:
         # Draw obstacles
         for obs in scenario.get("obstacles", []):
             rect = patches.Rectangle(
-                (obs["x"], obs["y"]), obs["w"], obs["h"],
-                linewidth=1, edgecolor="black", facecolor="gray", alpha=0.6
+                (obs["x"], obs["y"]),
+                obs["w"],
+                obs["h"],
+                linewidth=1,
+                edgecolor="black",
+                facecolor="gray",
+                alpha=0.6,
             )
             self.ax.add_patch(rect)
 
         # Draw waypoints
         for name, wp in scenario.get("waypoints", {}).items():
             self.ax.plot(wp["x_mm"], wp["y_mm"], "b^", markersize=10)
-            self.ax.annotate(name, (wp["x_mm"], wp["y_mm"]),
-                             textcoords="offset points", xytext=(5, 5),
-                             fontsize=9, color="blue")
+            self.ax.annotate(
+                name,
+                (wp["x_mm"], wp["y_mm"]),
+                textcoords="offset points",
+                xytext=(5, 5),
+                fontsize=9,
+                color="blue",
+            )
 
         # Robot marker (arrow)
         self._robot_patch = None
@@ -79,22 +91,35 @@ class SITLViz:
         self._range_line_r = None
         self._trail_x: list[float] = []
         self._trail_y: list[float] = []
-        self._trail_line, = self.ax.plot([], [], "g-", linewidth=1, alpha=0.5, label="trail")
+        (self._trail_line,) = self.ax.plot([], [], "g-", linewidth=1, alpha=0.5, label="trail")
 
         # Status text
         self._status_text = self.ax.text(
-            0.02, 0.98, "", transform=self.ax.transAxes,
-            va="top", ha="left", fontsize=9,
-            bbox=dict(boxstyle="round", facecolor="wheat", alpha=0.7)
+            0.02,
+            0.98,
+            "",
+            transform=self.ax.transAxes,
+            va="top",
+            ha="left",
+            fontsize=9,
+            bbox=dict(boxstyle="round", facecolor="wheat", alpha=0.7),
         )
 
         plt.legend(loc="lower right")
         plt.ion()
         plt.show()
 
-    def update(self, x: float, y: float, hdg_deg: float,
-               range_front_mm: float, range_right_mm: float,
-               battery_mv: float, speed_l: int, speed_r: int):
+    def update(
+        self,
+        x: float,
+        y: float,
+        hdg_deg: float,
+        range_front_mm: float,
+        range_right_mm: float,
+        battery_mv: float,
+        speed_l: int,
+        speed_r: int,
+    ):
         """Update visualization with latest robot state."""
         now = time.monotonic()
         if now - self._last_draw < self.interval:
@@ -110,16 +135,18 @@ class SITLViz:
             self._range_line_r.remove()
 
         # Draw robot body (circle)
-        self._robot_patch = patches.Circle(
-            (x, y), radius=100, color="red", zorder=5
-        )
+        self._robot_patch = patches.Circle((x, y), radius=100, color="red", zorder=5)
         self.ax.add_patch(self._robot_patch)
 
         # Draw heading arrow
         dx = 150 * math.cos(math.radians(hdg_deg))
         dy = 150 * math.sin(math.radians(hdg_deg))
-        self.ax.annotate("", xy=(x + dx, y + dy), xytext=(x, y),
-                         arrowprops=dict(arrowstyle="->", color="red", lw=2))
+        self.ax.annotate(
+            "",
+            xy=(x + dx, y + dy),
+            xytext=(x, y),
+            arrowprops=dict(arrowstyle="->", color="red", lw=2),
+        )
 
         # Range sensor rays
         cap = 2000  # display cap at 2000 mm
@@ -128,11 +155,11 @@ class SITLViz:
 
         fx = x + rf * math.cos(math.radians(hdg_deg))
         fy = y + rf * math.sin(math.radians(hdg_deg))
-        self._range_line_f, = self.ax.plot([x, fx], [y, fy], "y--", lw=1, alpha=0.7)
+        (self._range_line_f,) = self.ax.plot([x, fx], [y, fy], "y--", lw=1, alpha=0.7)
 
         rx = x + rr * math.cos(math.radians((hdg_deg - 90) % 360))
         ry = y + rr * math.sin(math.radians((hdg_deg - 90) % 360))
-        self._range_line_r, = self.ax.plot([x, rx], [y, ry], "c--", lw=1, alpha=0.7)
+        (self._range_line_r,) = self.ax.plot([x, rx], [y, ry], "c--", lw=1, alpha=0.7)
 
         # Trail
         self._trail_x.append(x)
@@ -164,6 +191,7 @@ class SITLViz:
 
 # ── Standalone mode: reads JSON state file ────────────────────────────────────
 
+
 def watch_state_file(state_path: str, scenario: dict, hz: float = 10):
     viz = SITLViz(scenario, update_hz=hz)
     print(f"[VIZ] Watching {state_path} at {hz} Hz. Close window to exit.")
@@ -189,10 +217,11 @@ def watch_state_file(state_path: str, scenario: dict, hz: float = 10):
 
 def main():
     ap = argparse.ArgumentParser(description="SITL Real-time Visualizer")
-    ap.add_argument("--state",    default="/tmp/sitl_state.json",
-                    help="JSON state file written by sitl_wheeled.py")
+    ap.add_argument(
+        "--state", default="/tmp/sitl_state.json", help="JSON state file written by sitl_wheeled.py"
+    )
     ap.add_argument("--scenario", default="tools/sitl/scenarios/empty.yaml")
-    ap.add_argument("--hz",       type=float, default=10)
+    ap.add_argument("--hz", type=float, default=10)
     args = ap.parse_args()
 
     if not _MPL:
